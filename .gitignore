@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.eggs/
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Inno Setup output
+installer/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Settings (user-specific)
+settings.json
+
+# Logs
+*.log
