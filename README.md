@@ -76,7 +76,7 @@ Download `SequentialPaste.exe` from [Releases](../../releases) — no installati
 
 ### Option 3: From Source
 ```bash
-git clone https://github.com/YOUR_USERNAME/sequential-paste.git
+git clone https://github.com/imsayanpaul/sequential-paste.git
 cd sequential-paste
 pip install -r requirements.txt
 python main.py
