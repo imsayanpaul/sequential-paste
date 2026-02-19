@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icon.png" alt="Sequential Paste" width="128" height="128">
+  <img src="assets/icon.ico" alt="Sequential Paste" width="128" height="128">
 </p>
 
 <h1 align="center">Sequential Paste</h1>
