@@ -84,18 +84,11 @@ python main.py
 
 ## 🛠️ Building from Source
 
-### Build Portable Executable
 ```bash
 pip install pyinstaller
 python build.py
 # Output: dist/SequentialPaste.exe
 ```
-
-### Build Installer
-1. Install [Inno Setup](https://jrsoftware.org/isinfo.php)
-2. Open `installer.iss` in Inno Setup
-3. Press **F9** to compile
-4. Output: `installer/SequentialPaste_Setup_v2.0.0.exe`
 
 ## 📁 Project Structure
 
