@@ -20,9 +20,9 @@ def get_settings_path() -> str:
 DEFAULT_SETTINGS = {
     'delimiter': 'line',
     'paste_mode': 'paste',  # 'paste' = Ctrl+V, 'type' = simulate keystrokes
-    'sound_enabled': True,
-    'toast_enabled': True,
-    'show_position': True,
+    'sound_enabled': False,
+    'toast_enabled': False,  # Silent by default (no popup notifications on copy/paste)
+    'show_position': False,
     'startup_with_windows': False,
 }
 

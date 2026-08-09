@@ -45,9 +45,18 @@ def play_success_sound():
     threading.Thread(target=_play, daemon=True).start()
 
 
+def is_toast_enabled() -> bool:
+    """Check if toast notifications are enabled in settings"""
+    try:
+        from settings_manager import get_settings
+        return get_settings().get('toast_enabled', False)
+    except Exception:
+        return False
+
+
 def show_toast(title: str, message: str, timeout: int = 3):
-    """Show a Windows toast notification"""
-    if not NOTIFICATIONS.get('toast_enabled', True):
+    """Show a Windows toast notification if enabled"""
+    if not is_toast_enabled():
         return
     
     if not PLYER_AVAILABLE:

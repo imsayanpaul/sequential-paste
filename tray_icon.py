@@ -86,23 +86,23 @@ class TrayIcon:
         notification.notify_sequence_reset()
         self.update_menu()
     
+    def _toggle_notifications(self, icon, item):
+        """Toggle toast notifications on/off"""
+        current = self.settings.get('toast_enabled', False)
+        self.settings.set('toast_enabled', not current)
+        self.update_menu()
+
     def _toggle_startup(self, icon, item):
         """Toggle startup with Windows"""
         current = is_startup_enabled()
         if set_startup_with_windows(not current):
             self.settings.set('startup_with_windows', not current)
-            status = "enabled" if not current else "disabled"
-            notification.show_toast(APP_NAME, f"Startup with Windows {status}")
-        else:
-            notification.show_toast(APP_NAME, "Failed to change startup setting")
         self.update_menu()
-    
+
     def _set_paste_mode(self, mode: str):
         """Change paste mode (paste or type)"""
         def action(icon, item):
             self.settings.set('paste_mode', mode)
-            mode_name = "Paste (Ctrl+V)" if mode == 'paste' else "Type (simulate keys)"
-            notification.show_toast(APP_NAME, f"Mode: {mode_name}")
             self.update_menu()
         return action
     
@@ -112,6 +112,18 @@ class TrayIcon:
             self._on_exit()
         icon.stop()
     
+    def _get_icon_image(self) -> Image.Image:
+        """Get application icon from assets or fallback to generated icon"""
+        import os
+        for filename in ['icon.ico', 'icon.png']:
+            icon_path = os.path.join(os.path.dirname(__file__), 'assets', filename)
+            if os.path.exists(icon_path):
+                try:
+                    return Image.open(icon_path)
+                except Exception:
+                    pass
+        return self._create_icon_image()
+
     def _create_menu(self) -> pystray.Menu:
         """Create the right-click menu"""
         current_delimiter = self.clipboard_manager.delimiter
@@ -138,86 +150,80 @@ class TrayIcon:
                 None,
                 enabled=False
             ),
-            pystray.Menu.SEPARATOR,
-            # Delimiter options directly in main menu
             pystray.MenuItem(
-                "📝 Sentence (. ! ?)",
-                pystray.Menu(
-                    pystray.MenuItem(
-                        "✓ Use this delimiter",
-                        self._set_delimiter(DelimiterType.SENTENCE)
-                    ),
-                    pystray.MenuItem(
-                        "ℹ️ 'Hello. World!' → 'Hello.' then 'World!'",
-                        None,
-                        enabled=False
-                    ),
-                ),
-                checked=lambda item: current_delimiter == DelimiterType.SENTENCE
-            ),
-            pystray.MenuItem(
-                "📄 Line (newline)",
-                pystray.Menu(
-                    pystray.MenuItem(
-                        "✓ Use this delimiter",
-                        self._set_delimiter(DelimiterType.LINE)
-                    ),
-                    pystray.MenuItem(
-                        "ℹ️ Line1↵Line2 → 'Line1' then 'Line2'",
-                        None,
-                        enabled=False
-                    ),
-                ),
-                checked=lambda item: current_delimiter == DelimiterType.LINE
-            ),
-            pystray.MenuItem(
-                "📃 Paragraph (blank line)",
-                pystray.Menu(
-                    pystray.MenuItem(
-                        "✓ Use this delimiter",
-                        self._set_delimiter(DelimiterType.PARAGRAPH)
-                    ),
-                    pystray.MenuItem(
-                        "ℹ️ Para1↵↵Para2 → 'Para1' then 'Para2'",
-                        None,
-                        enabled=False
-                    ),
-                ),
-                checked=lambda item: current_delimiter == DelimiterType.PARAGRAPH
+                "🔄 Reset Sequence",
+                self._reset_sequence,
+                enabled=self.clipboard_manager.has_content
             ),
             pystray.Menu.SEPARATOR,
-            # Paste mode options
+            # Delimiter options - Direct single-click selection with inline examples
             pystray.MenuItem(
-                "📋 Paste Mode (Ctrl+V)",
-                pystray.Menu(
-                    pystray.MenuItem(
-                        "✓ Use this mode",
-                        self._set_paste_mode('paste')
-                    ),
-                    pystray.MenuItem(
-                        "ℹ️ Fast, uses clipboard. Default.",
-                        None,
-                        enabled=False
-                    ),
-                ),
-                checked=lambda item: self.settings.get('paste_mode', 'paste') == 'paste'
+                "📄 Line  (Line1 ↵ Line2)",
+                self._set_delimiter(DelimiterType.LINE),
+                checked=lambda item: current_delimiter == DelimiterType.LINE,
+                radio=True
             ),
             pystray.MenuItem(
-                "⌨️ Type Mode (simulate keys)",
-                pystray.Menu(
-                    pystray.MenuItem(
-                        "✓ Use this mode",
-                        self._set_paste_mode('type')
-                    ),
-                    pystray.MenuItem(
-                        "ℹ️ Slower, but works on paste-blocked fields.",
-                        None,
-                        enabled=False
-                    ),
-                ),
-                checked=lambda item: self.settings.get('paste_mode', 'paste') == 'type'
+                "🔤 Comma  (apple, banana)",
+                self._set_delimiter(DelimiterType.COMMA),
+                checked=lambda item: current_delimiter == DelimiterType.COMMA,
+                radio=True
+            ),
+            pystray.MenuItem(
+                "📝 Sentence  (Hello. World!)",
+                self._set_delimiter(DelimiterType.SENTENCE),
+                checked=lambda item: current_delimiter == DelimiterType.SENTENCE,
+                radio=True
+            ),
+            pystray.MenuItem(
+                "📃 Paragraph  (Para1 ↵↵ Para2)",
+                self._set_delimiter(DelimiterType.PARAGRAPH),
+                checked=lambda item: current_delimiter == DelimiterType.PARAGRAPH,
+                radio=True
             ),
             pystray.Menu.SEPARATOR,
+            # Paste mode options - Direct single-click selection
+            pystray.MenuItem(
+                "📋 Paste Mode  (Fast • Ctrl+V)",
+                self._set_paste_mode('paste'),
+                checked=lambda item: self.settings.get('paste_mode', 'paste') == 'paste',
+                radio=True
+            ),
+            pystray.MenuItem(
+                "⌨️ Type Mode  (Simulate keys)",
+                self._set_paste_mode('type'),
+                checked=lambda item: self.settings.get('paste_mode', 'paste') == 'type',
+                radio=True
+            ),
+            pystray.Menu.SEPARATOR,
+            # Hover side panel for detailed explanations
+            pystray.MenuItem(
+                "💡 Mode Details & Examples",
+                pystray.Menu(
+                    pystray.MenuItem("📄 Line Mode:", None, enabled=False),
+                    pystray.MenuItem("   Splits text by newlines", None, enabled=False),
+                    pystray.MenuItem("   Line 1↵Line 2 ➜ 'Line 1', 'Line 2'", None, enabled=False),
+                    pystray.Menu.SEPARATOR,
+                    pystray.MenuItem("🔤 Comma Mode:", None, enabled=False),
+                    pystray.MenuItem("   Splits text at commas", None, enabled=False),
+                    pystray.MenuItem("   apple, banana ➜ 'apple', 'banana'", None, enabled=False),
+                    pystray.Menu.SEPARATOR,
+                    pystray.MenuItem("📝 Sentence Mode:", None, enabled=False),
+                    pystray.MenuItem("   Splits at . ! ? । 。 ؟", None, enabled=False),
+                    pystray.MenuItem("   Handles Mr., Dr., URLs, decimals", None, enabled=False),
+                    pystray.Menu.SEPARATOR,
+                    pystray.MenuItem("📃 Paragraph Mode:", None, enabled=False),
+                    pystray.MenuItem("   Splits at blank lines", None, enabled=False),
+                    pystray.Menu.SEPARATOR,
+                    pystray.MenuItem("📋 Paste Mode: Fast Ctrl+V paste", None, enabled=False),
+                    pystray.MenuItem("⌨️ Type Mode: Works on blocked fields", None, enabled=False),
+                )
+            ),
+            pystray.MenuItem(
+                "🔔 Toast Notifications",
+                self._toggle_notifications,
+                checked=lambda item: self.settings.get('toast_enabled', False)
+            ),
             pystray.MenuItem(
                 "🚀 Start with Windows",
                 self._toggle_startup,
@@ -225,12 +231,12 @@ class TrayIcon:
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
-                "Shortcuts",
+                "⌨️ Shortcuts Guide",
                 pystray.Menu(
-                    pystray.MenuItem("Ctrl+Shift+V: Paste next", None, enabled=False),
-                    pystray.MenuItem("Ctrl+Shift+N: Skip", None, enabled=False),
-                    pystray.MenuItem("Ctrl+Shift+B: Go back", None, enabled=False),
-                    pystray.MenuItem("Ctrl+Shift+R: Reset", None, enabled=False),
+                    pystray.MenuItem("Ctrl+Shift+V  ➜  Paste next segment", None, enabled=False),
+                    pystray.MenuItem("Ctrl+Shift+N  ➜  Skip current segment", None, enabled=False),
+                    pystray.MenuItem("Ctrl+Shift+B  ➜  Go back to previous", None, enabled=False),
+                    pystray.MenuItem("Ctrl+Shift+R  ➜  Reset to start", None, enabled=False),
                 )
             ),
             pystray.Menu.SEPARATOR,
@@ -255,7 +261,7 @@ class TrayIcon:
         """Start the tray icon (blocking)"""
         self.icon = pystray.Icon(
             APP_NAME,
-            self._create_icon_image(),
+            self._get_icon_image(),
             self._get_status_text(),
             self._create_menu()
         )

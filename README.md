@@ -5,7 +5,7 @@
 <h1 align="center">Sequential Paste</h1>
 
 <p align="center">
-  <b>Paste text one segment at a time — line by line, sentence by sentence.</b>
+  <b>Paste text one segment at a time — line by line, comma by comma, sentence by sentence.</b>
   <br>
   A lightweight Windows utility that turns any copied text into a sequential paste queue.
 </p>
@@ -21,13 +21,13 @@
 
 ## ❓ The Problem
 
-You copy a list of 50 usernames. Now you need to paste them **one at a time** into 50 separate fields. Normally, you'd go back and forth copying each line individually.
+You copy a list of 50 usernames or comma-separated values. Now you need to paste them **one at a time** into 50 separate fields. Normally, you'd go back and forth copying each line or item individually.
 
 **Sequential Paste fixes this.** Copy once, paste sequentially.
 
 ## ⚡ How It Works
 
-1. **Copy** any text (a list, paragraph, or document)
+1. **Copy** any text (a list, comma-separated values, paragraph, or document)
 2. Press **`Ctrl+Shift+V`** → pastes the **1st segment**
 3. Press again → pastes the **2nd segment**
 4. And so on...
@@ -38,16 +38,25 @@ That's it. No UI to manage, no windows to open. It lives in your **system tray**
 
 | Feature | Description |
 |---------|-------------|
-| 📄 **Three Split Modes** | Line (default), Sentence, Paragraph |
+| 📄 **Four Split Modes** | **Line** (newline), **Comma** (`,` CSV values), **Sentence** (`. ! ?`), **Paragraph** (blank lines) |
 | ⌨️ **Type Mode** | Simulates keystrokes — works on paste-blocked fields (banking sites, exams, forms) |
 | 📋 **Paste Mode** | Standard Ctrl+V paste — fast and default |
-| ⏭️ **Skip & Go Back** | Navigate through segments freely |
+| ⏭️ **Skip & Go Back** | Navigate through segments freely with `Ctrl+Shift+N` and `Ctrl+Shift+B` |
 | 🌐 **Multi-language** | Supports Hindi (।), Chinese (。), Arabic (؟) sentence endings |
 | 🧠 **Smart Splitting** | Handles abbreviations (Mr., Dr.), URLs, emails, decimals, ellipsis |
 | 💾 **Persistent Settings** | Remembers your preferences between sessions |
 | 🚀 **Startup with Windows** | Optional auto-start on boot |
 | 🔒 **Single Instance** | Prevents duplicate instances from running |
 | 📝 **Error Logging** | Logs errors to AppData for easy debugging |
+
+## 🔤 Split Modes Explained
+
+| Mode | Example Input | Output Segments |
+|------|---------------|-----------------|
+| 📄 **Line** | `Line 1\nLine 2\nLine 3` | `'Line 1'` ➔ `'Line 2'` ➔ `'Line 3'` |
+| 🔤 **Comma** | `apple, banana, cherry` | `'apple'` ➔ `'banana'` ➔ `'cherry'` |
+| 📝 **Sentence** | `Hello. How are you? Fine!` | `'Hello.'` ➔ `'How are you?'` ➔ `'Fine!'` |
+| 📃 **Paragraph** | `Para 1\n\nPara 2` | `'Para 1'` ➔ `'Para 2'` |
 
 ## ⌨️ Keyboard Shortcuts
 

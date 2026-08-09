@@ -1,6 +1,4 @@
-"""
-Hotkey Handler - Global hotkey registration and handling
-"""
+import ctypes
 import keyboard
 import pyperclip
 import threading
@@ -22,6 +20,7 @@ class HotkeyHandler:
         self._on_delimiter_change: Optional[Callable] = None
         self._on_position_change: Optional[Callable] = None
         self._last_clipboard_content: str = ""
+        self._last_clip_seq_num: int = 0
         self._is_pasting: bool = False  # Guard to prevent monitor interference
     
     def set_callbacks(self, 
@@ -41,8 +40,8 @@ class HotkeyHandler:
     
     def _clipboard_monitor_loop(self):
         """
-        Background thread that monitors clipboard for ANY changes.
-        This detects copies from mouse, buttons, right-click menu, etc.
+        Background thread that monitors clipboard for ANY changes using
+        Windows GetClipboardSequenceNumber to detect genuine user copy actions.
         """
         while self.running:
             try:
@@ -51,19 +50,36 @@ class HotkeyHandler:
                     time.sleep(0.5)
                     continue
                 
-                current_clipboard = pyperclip.paste()
+                try:
+                    seq_num = ctypes.windll.user32.GetClipboardSequenceNumber()
+                except Exception:
+                    seq_num = 0
                 
-                # Check if clipboard content changed
-                if current_clipboard and current_clipboard != self._last_clipboard_content:
-                    self._last_clipboard_content = current_clipboard
-                    
-                    # Update clipboard manager (force reload to handle re-copying same text)
-                    self.clipboard_manager.load_text(current_clipboard)
-                    count = self.clipboard_manager.total_segments
-                    if count > 0:
-                        print(f"[DEBUG] Clipboard changed! Loaded {count} segments. First: {self.clipboard_manager.segments[0][:30] if self.clipboard_manager.segments else 'N/A'}")
-                        notification.notify_sequence_loaded(count)
-                        self._update_position()
+                # If system sequence number hasn't changed, user has NOT performed a new copy
+                if seq_num > 0 and seq_num == self._last_clip_seq_num:
+                    time.sleep(0.5)
+                    continue
+                
+                current_clipboard = pyperclip.paste()
+                if not current_clipboard or not current_clipboard.strip():
+                    time.sleep(0.5)
+                    continue
+                
+                # Skip if clipboard matches the single segment we JUST copied in Paste Mode
+                if (current_clipboard == self._last_clipboard_content and 
+                    current_clipboard != self.clipboard_manager.current_content):
+                    time.sleep(0.5)
+                    continue
+                
+                # Genuine new copy operation detected!
+                self._last_clip_seq_num = seq_num
+                self._last_clipboard_content = current_clipboard
+                self.clipboard_manager.load_text(current_clipboard)
+                count = self.clipboard_manager.total_segments
+                if count > 0:
+                    print(f"[DEBUG] New copy detected (seq #{seq_num})! Loaded {count} segments.")
+                    notification.notify_sequence_loaded(count)
+                    self._update_position()
             except Exception:
                 pass
             
@@ -79,6 +95,10 @@ class HotkeyHandler:
                 if current and current.strip():
                     self.clipboard_manager.load_text(current)
                     self._last_clipboard_content = current
+                    try:
+                        self._last_clip_seq_num = ctypes.windll.user32.GetClipboardSequenceNumber()
+                    except Exception:
+                        pass
                     count = self.clipboard_manager.total_segments
                     if count > 0:
                         print(f"[DEBUG] Fallback load: {count} segments")
@@ -91,7 +111,7 @@ class HotkeyHandler:
             notification.notify_no_content()
             return
         
-        # Check if sequence is exhausted
+        # Check if sequence is exhausted - if so, stop cleanly (DO NOT auto-loop old text!)
         if self.clipboard_manager.is_exhausted():
             notification.notify_sequence_complete(self.clipboard_manager.total_segments)
             return
@@ -108,32 +128,36 @@ class HotkeyHandler:
                 paste_mode = settings.get('paste_mode', 'paste')
                 
                 if paste_mode == 'type':
+                    # Release Ctrl and Shift modifiers so typed characters aren't treated as Ctrl+Shift shortcuts
+                    keyboard.release('ctrl')
+                    keyboard.release('shift')
+                    keyboard.release('left ctrl')
+                    keyboard.release('right ctrl')
+                    keyboard.release('left shift')
+                    keyboard.release('right shift')
+                    time.sleep(0.05)
+                    
                     # Type mode: simulate keystrokes (works on paste-blocked fields)
-                    keyboard.write(segment, delay=0.02)
+                    keyboard.write(segment, delay=0.01)
                 else:
                     # Paste mode: use clipboard (faster)
                     pyperclip.copy(segment)
                     keyboard.send('ctrl+v')
+                    # Track segment & update sequence number to prevent monitor re-triggering
+                    self._last_clipboard_content = segment
+                    try:
+                        self._last_clip_seq_num = ctypes.windll.user32.GetClipboardSequenceNumber()
+                    except Exception:
+                        pass
                 
                 # Small delay to let action complete
                 time.sleep(0.1)
-                
-                # Track segment as last clipboard content
-                self._last_clipboard_content = segment
             finally:
                 self._is_pasting = False
             
-            # Show position notification
+            # Show position notification (respects toast_enabled setting)
             current, total = self.clipboard_manager.get_position()
-            if current == total:
-                # Just pasted the last item
-                notification.show_toast(
-                    notification.APP_NAME,
-                    f"Pasted {current}/{total} (last item)",
-                    timeout=2
-                )
-            else:
-                notification.notify_paste_position(current, total)
+            notification.notify_paste_position(current, total)
             
             self._update_position()
     

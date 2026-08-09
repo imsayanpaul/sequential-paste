@@ -8,6 +8,7 @@ class DelimiterType(Enum):
     SENTENCE = "sentence"
     LINE = "line"
     PARAGRAPH = "paragraph"
+    COMMA = "comma"
 
 # Common abbreviations that should NOT trigger sentence breaks
 ABBREVIATIONS = [
@@ -24,6 +25,7 @@ DELIMITER_PATTERNS = {
     DelimiterType.SENTENCE: None,  # Handled specially in clipboard_manager
     DelimiterType.LINE: r'\n',                   # Split on newlines
     DelimiterType.PARAGRAPH: r'\n\s*\n',         # Split on blank lines
+    DelimiterType.COMMA: r',',                   # Split on commas
 }
 
 # Hotkey configurations
