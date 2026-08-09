@@ -3,7 +3,7 @@
 ; Then compile this script to create Setup.exe
 
 #define MyAppName "Sequential Paste"
-#define MyAppVersion "2.0.0"
+#define MyAppVersion "1.0.0"
 #define MyAppPublisher "Sayan Paul"
 #define MyAppExeName "SequentialPaste.exe"
 
@@ -23,6 +23,7 @@ DisableProgramGroupPage=yes
 OutputDir=installer
 OutputBaseFilename=SequentialPaste_Setup_v{#MyAppVersion}
 SetupIconFile=assets\icon.ico
+UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma
 SolidCompression=yes
 

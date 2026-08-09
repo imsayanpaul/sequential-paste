@@ -45,7 +45,7 @@ NOTIFICATIONS = {
 
 # Application settings
 APP_NAME = "Sequential Paste"
-APP_VERSION = "2.0.0"
+APP_VERSION = "1.0.0"
 DEFAULT_DELIMITER = DelimiterType.LINE
 
 # Sound frequency for completion beep (Hz)

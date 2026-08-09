@@ -12,7 +12,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows-blue?logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/Version-2.0.0-green" alt="Version">
+  <img src="https://img.shields.io/badge/Version-1.0.0-green" alt="Version">
   <img src="https://img.shields.io/badge/Python-3.10+-yellow?logo=python" alt="Python">
   <img src="https://img.shields.io/badge/License-MIT-orange" alt="License">
 </p>
@@ -78,7 +78,7 @@ That's it. No UI to manage, no windows to open. It lives in your **system tray**
 ## 📥 Installation
 
 ### Option 1: Installer (Recommended)
-Download `SequentialPaste_Setup_v2.0.0.exe` from [Releases](../../releases) and run the setup wizard.
+Download `SequentialPaste_Setup_v1.0.0.exe` from [Releases](../../releases) and run the setup wizard.
 
 ### Option 2: Portable
 Download `SequentialPaste.exe` from [Releases](../../releases) — no installation needed, just run it.
