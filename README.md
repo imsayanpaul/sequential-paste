@@ -152,7 +152,3 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 MIT License — see [LICENSE](LICENSE) for details.
 
 ---
-
-<p align="center">
-  Made with ❤️ by <b>Sayan Paul</b>
-</p>
