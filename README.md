@@ -17,6 +17,10 @@
   <img src="https://img.shields.io/badge/License-MIT-orange" alt="License">
 </p>
 
+<p align="center">
+  <img src="assets/image.png" alt="Sequential Paste System Tray Interface" width="340">
+</p>
+
 ---
 
 ## ❓ The Problem
