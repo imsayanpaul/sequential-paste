@@ -36,7 +36,7 @@ You copy a list of 50 usernames or comma-separated values. Now you need to paste
 3. Press again → pastes the **2nd segment**
 4. And so on...
 
-That's it. No UI to manage, no windows to open. It lives in your **system tray** and just works.
+That is it. No UI to manage, no windows to open. It lives in your **system tray** and just works.
 
 ## ✨ Features
 
