@@ -39,10 +39,12 @@ def build():
     for imp in hidden_imports:
         args.extend(['--hidden-import', imp])
     
-    # Data files: tray icon assets and the app window's page
-    for folder in ('assets', 'ui'):
-        if os.path.exists(folder):
-            args.extend(['--add-data', f'{folder};{folder}'])
+    # Data files: the tray icon and the app window's page. Only the icon from
+    # assets/ - the rest of that folder is README images.
+    if os.path.exists(ICON_PATH):
+        args.extend(['--add-data', f'{ICON_PATH};assets'])
+    if os.path.exists('ui'):
+        args.extend(['--add-data', 'ui;ui'])
     
     # pywebview loads its Windows backend and .NET bridge dynamically
     for module in ('webview.platforms.winforms', 'webview.platforms.edgechromium', 'clr'):

@@ -119,13 +119,13 @@ class TrayIcon:
             return self._create_icon_image()
 
     def _create_icon_image(self) -> Image.Image:
-        """Simple clipboard icon, used if the asset is missing"""
+        """The logo drawn directly, used if the icon asset is missing (see tools/make_logo.py)"""
         image = Image.new('RGBA', (64, 64), (0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
-        draw.rounded_rectangle([8, 4, 56, 60], radius=6, fill="#3FA34D")
-        draw.rectangle([20, 0, 44, 12], fill="#2D7A38")
-        for top, right in ((22, 50), (32, 45), (42, 48)):
-            draw.rectangle([14, top, right, top + 4], fill="#FFFFFF")
+        draw.rounded_rectangle([0, 0, 63, 63], radius=15, fill="#161513", outline="#3A3832", width=2)
+        draw.rounded_rectangle([15, 40, 49, 48], radius=4, fill="#5D5B56")
+        draw.rounded_rectangle([15, 28, 49, 36], radius=4, fill="#9E9B94")
+        draw.rounded_rectangle([21, 15, 55, 24], radius=4, fill="#FFE15A")
         return image
 
     def _build_images(self) -> dict:

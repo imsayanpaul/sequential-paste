@@ -59,6 +59,7 @@
 
   header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
   header h1 { font: 600 20px/1.2 "Segoe UI Variable Display", "Segoe UI", sans-serif; margin: 0; }
+  header .logo { width: 28px; height: 28px; flex: none; margin-right: -2px; }
   .pill { font-size: 12px; padding: 2px 10px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); }
   .pill.paused { background: var(--warn-soft); color: var(--text-2); }
   header .spacer { flex: 1; }
@@ -164,6 +165,12 @@
 <div class="app">
   <main class="main">
     <header>
+      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+        <rect width="64" height="64" rx="15" style="fill: var(--text)"/>
+        <rect x="15" y="40" width="34" height="8" rx="4" style="fill: var(--bg)" opacity=".32"/>
+        <rect x="15" y="28" width="34" height="8" rx="4" style="fill: var(--bg)" opacity=".62"/>
+        <rect x="21" y="15" width="34" height="9" rx="4.5" style="fill: #FFE15A"/>
+      </svg>
       <h1>Sequential Paste</h1>
       <span class="pill" id="status-pill">Active</span>
       <span class="spacer"></span>
