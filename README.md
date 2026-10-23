@@ -70,6 +70,7 @@ That's it. No UI to manage, no windows to open. It lives in your **system tray**
 | `Ctrl+Shift+N` | Skip current segment |
 | `Ctrl+Shift+B` | Go back to previous segment |
 | `Ctrl+Shift+R` | Reset sequence to start |
+| Hold `Esc` | Cancel typing in Type Mode |
 
 ## 🎯 Use Cases
 

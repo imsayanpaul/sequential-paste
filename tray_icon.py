@@ -237,6 +237,7 @@ class TrayIcon:
                     pystray.MenuItem("Ctrl+Shift+N  ➜  Skip current segment", None, enabled=False),
                     pystray.MenuItem("Ctrl+Shift+B  ➜  Go back to previous", None, enabled=False),
                     pystray.MenuItem("Ctrl+Shift+R  ➜  Reset to start", None, enabled=False),
+                    pystray.MenuItem("Hold Esc  ➜  Cancel typing (Type Mode)", None, enabled=False),
                 )
             ),
             pystray.Menu.SEPARATOR,

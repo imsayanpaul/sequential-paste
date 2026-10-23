@@ -41,6 +41,8 @@ class HotkeyHandler:
         self._last_clip_seq_num: int = 0
         # Serializes clipboard checks between the monitor and the worker
         self._clipboard_lock = threading.Lock()
+        # Set while Type Mode is typing a segment
+        self._typing = threading.Event()
 
     def set_callbacks(self,
                       on_delimiter_change: Optional[Callable] = None,
@@ -128,8 +130,33 @@ class HotkeyHandler:
         The callback must also return a falsy value so the keys stay suppressed.
         """
         def callback():
+            # Ignore Ctrl+Shift+V while a segment is still being typed, so
+            # impatient repeated presses don't queue up a burst of typing
+            if self._typing.is_set() and action == self._on_sequential_paste:
+                return
             self._actions.put(action)
         return callback
+
+    def _type_text(self, text: str) -> bool:
+        """
+        Type text as keystrokes. Holding Esc cancels.
+        Returns False if cancelled.
+        """
+        self._typing.set()
+        try:
+            for char in text:
+                if keyboard.is_pressed('esc'):
+                    return False
+                # restore_state_after=False: by default keyboard.write presses
+                # the modifiers that were held when typing started (Ctrl+Shift
+                # from the hotkey) back down afterwards. The user has released
+                # them by then, so they stayed stuck down system-wide and every
+                # key and click became Ctrl+Shift+<key>.
+                keyboard.write(char, restore_state_after=False)
+                time.sleep(0.01)
+            return True
+        finally:
+            self._typing.clear()
 
     def _release_modifiers(self):
         for key in _MODIFIERS:
@@ -173,7 +200,12 @@ class HotkeyHandler:
 
         if paste_mode == 'type':
             # Type mode: simulate keystrokes (works on paste-blocked fields)
-            keyboard.write(segment, delay=0.01)
+            if not self._type_text(segment):
+                # Step back so the cancelled segment can be typed again
+                self.clipboard_manager.go_back()
+                notification.show_toast(notification.APP_NAME, "Typing cancelled", timeout=1)
+                self._update_position()
+                return
         else:
             # Paste mode: use clipboard (faster)
             with self._clipboard_lock:
