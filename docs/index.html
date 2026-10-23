@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sequential Paste: copy once, paste one at a time</title>
+<meta name="description" content="A free Windows tray app. Copy a list once, then press Ctrl+Shift+V to paste it one item at a time. Fill forms and spreadsheets without switching windows.">
+<meta property="og:title" content="Sequential Paste">
+<meta property="og:description" content="Copy a list once. Press Ctrl+Shift+V to paste it one item at a time. Free for Windows.">
+<meta property="og:image" content="assets/window-light.png">
+<meta name="theme-color" content="#F2EFE8">
+<link rel="icon" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #F2EFE8;
+    --paper-2: #E8E4D9;
+    --card: #FBFAF6;
+    --tape: #FFFDF7;
+    --ink: #161513;
+    --ink-2: #4B4840;
+    --ink-3: #8A857A;
+    --line: #D8D3C6;
+    --line-2: #C4BEAF;
+    --green: #1F8749;
+    --green-ink: #FFFFFF;
+    --marker: #FFE15A;
+    --marker-ink: #161513;
+    --shadow: 0 1px 0 rgba(22,21,19,.04), 0 12px 32px -12px rgba(22,21,19,.18);
+    --sans: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #131311;
+      --paper-2: #1A1A17;
+      --card: #1D1C19;
+      --tape: #22211D;
+      --ink: #F1EEE6;
+      --ink-2: #BDB8AC;
+      --ink-3: #85806F;
+      --line: #2F2D28;
+      --line-2: #3F3C35;
+      --green: #45C077;
+      --green-ink: #0D1A12;
+      --marker: #E8C93C;
+      --marker-ink: #161513;
+      --shadow: 0 1px 0 rgba(0,0,0,.3), 0 16px 40px -16px rgba(0,0,0,.7);
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 17px/1.55 var(--sans); -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  img { max-width: 100%; display: block; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+  .mono { font-family: var(--mono); }
+  ::selection { background: var(--marker); color: var(--marker-ink); }
+
+  /* ---------- nav ---------- */
+  nav { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--paper) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid transparent; transition: border-color .2s; }
+  nav.scrolled { border-bottom-color: var(--line); }
+  nav .wrap { display: flex; align-items: center; gap: 28px; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; text-decoration: none; letter-spacing: -.01em; }
+  .brand img { width: 26px; height: 26px; }
+  nav .links { display: flex; gap: 24px; margin-left: auto; font-size: 15px; }
+  nav .links a { text-decoration: none; color: var(--ink-2); }
+  nav .links a:hover { color: var(--ink); }
+  nav .links a.btn { color: var(--paper); padding: 8px 14px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 600;
+    border-radius: 10px; padding: 10px 16px; font-size: 15px; border: 1px solid var(--ink);
+    background: var(--ink); color: var(--paper); transition: transform .12s, box-shadow .12s;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px -8px rgba(0,0,0,.5); }
+  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line-2); }
+  .btn.green { background: var(--green); border-color: var(--green); color: var(--green-ink); }
+  .btn svg { width: 18px; height: 18px; }
+
+  /* ---------- hero ---------- */
+  /* padding-top/bottom only: .wrap supplies the side padding */
+  .hero { padding-top: 64px; padding-bottom: 40px; }
+  .eyebrow { font: 500 13px/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); display: flex; gap: 10px; align-items: center; }
+  .eyebrow .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  h1 {
+    font-size: clamp(48px, 8.4vw, 112px); line-height: .92; letter-spacing: -.045em; font-weight: 800;
+    margin: 22px 0 26px; font-variation-settings: "opsz" 96;
+  }
+  h1 .w { display: inline-block; opacity: 0; transform: translateY(.18em); animation: drop .5s cubic-bezier(.2,.8,.2,1) forwards; }
+  h1 .hl { background: linear-gradient(transparent 58%, var(--marker) 58%, var(--marker) 92%, transparent 92%); padding: 0 .06em; margin: 0 -.06em; color: inherit; }
+  @keyframes drop { to { opacity: 1; transform: none; } }
+  .lede { font-size: clamp(18px, 2vw, 21px); color: var(--ink-2); max-width: 600px; margin: 0 0 30px; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .cta .btn { padding: 14px 20px; font-size: 16px; }
+  .meta { margin-top: 16px; font: 13px/1.5 var(--mono); color: var(--ink-3); }
+
+  /* ---------- demo ---------- */
+  .demo {
+    margin-top: 56px; background: var(--card); border: 1px solid var(--line); border-radius: 20px;
+    box-shadow: var(--shadow); display: grid; grid-template-columns: 1fr 1.15fr; overflow: hidden;
+  }
+  .demo-col { padding: 28px; }
+  .demo-col + .demo-col { border-left: 1px dashed var(--line-2); }
+  .label { font: 500 12px/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+  .label button { font: inherit; color: var(--ink-2); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-transform: none; letter-spacing: 0; }
+
+  .tape {
+    background: var(--tape); border: 1px solid var(--line); border-radius: 6px; position: relative;
+    font: 15px/1.2 var(--mono); padding: 6px 0;
+    /* perforation down the left edge */
+    background-image: radial-gradient(circle at 0 50%, var(--card) 4px, transparent 4.5px);
+    background-size: 10px 14px; background-repeat: repeat-y;
+  }
+  .tape ol { list-style: none; margin: 0; padding: 0; counter-reset: n; }
+  .tape li {
+    counter-increment: n; display: grid; grid-template-columns: 34px 1fr; align-items: center;
+    padding: 9px 14px 9px 16px; border-bottom: 1px dashed var(--line); transition: opacity .35s, transform .35s;
+  }
+  .tape li:last-child { border-bottom: 0; }
+  .tape li::before { content: counter(n, decimal-leading-zero); color: var(--ink-3); font-size: 12px; }
+  .tape li .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tape li.next .t { background: var(--marker); color: var(--marker-ink); padding: 2px 4px; margin: -2px -4px; border-radius: 2px; justify-self: start; max-width: 100%; }
+  .tape li.used { opacity: .35; }
+  .tape li.used .t { text-decoration: line-through; text-decoration-thickness: 1px; }
+  .tape textarea {
+    width: 100%; min-height: 188px; border: 0; background: transparent; color: var(--ink); resize: vertical;
+    font: 15px/1.6 var(--mono); padding: 8px 16px 8px 22px; outline: none;
+  }
+
+  .keys { display: flex; align-items: center; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+  .keygroup { display: flex; gap: 8px; cursor: pointer; border: 0; background: none; padding: 0; color: inherit; font: inherit; }
+  .key {
+    font: 600 15px/1 var(--mono); min-width: 54px; height: 50px; padding: 0 14px; display: grid; place-items: center;
+    background: var(--card); color: var(--ink); border: 1px solid var(--line-2); border-bottom-width: 5px; border-radius: 10px;
+    transition: transform .08s, border-bottom-width .08s, background .08s;
+  }
+  .key.wide { min-width: 76px; }
+  .keygroup:hover .key { border-color: var(--ink-3); }
+  .keygroup.down .key { transform: translateY(4px); border-bottom-width: 1px; background: var(--marker); color: var(--marker-ink); border-color: var(--ink); }
+  .keys .plus { color: var(--ink-3); font-family: var(--mono); }
+  .hint { font-size: 14px; color: var(--ink-2); margin: 14px 0 0; }
+  .hint b { font-weight: 600; }
+
+  .form { display: grid; gap: 14px; }
+  .field label { display: block; font-size: 13px; color: var(--ink-2); margin-bottom: 6px; }
+  .input {
+    height: 46px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--paper); padding: 0 14px;
+    display: flex; align-items: center; font-size: 16px; position: relative; transition: border-color .15s, box-shadow .15s;
+    overflow: hidden; white-space: nowrap;
+  }
+  .input.focus { border-color: var(--ink); box-shadow: 0 0 0 3px color-mix(in srgb, var(--marker) 70%, transparent); }
+  .input.focus::after { content: ""; width: 1.5px; height: 20px; background: var(--ink); margin-left: 2px; animation: blink 1s steps(1) infinite; }
+  .input.filled { animation: flash .6s; }
+  @keyframes flash { 0% { background: var(--marker); } 100% { background: var(--paper); } }
+  @keyframes blink { 50% { opacity: 0; } }
+  .status { display: flex; justify-content: space-between; align-items: center; margin-top: 18px; font: 13px/1.4 var(--mono); color: var(--ink-3); gap: 12px; flex-wrap: wrap; }
+  .status .after { display: flex; gap: 6px; align-items: center; }
+  .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; }
+  .seg button { font: 12px/1 var(--mono); padding: 7px 10px; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  .tabflash { font: 600 12px/1 var(--mono); padding: 5px 8px; border: 1px solid var(--line-2); border-bottom-width: 3px; border-radius: 6px; opacity: 0; transition: opacity .15s; }
+  .tabflash.on { opacity: 1; background: var(--marker); color: var(--marker-ink); border-color: var(--ink); }
+  .flyer { position: fixed; z-index: 50; font: 15px/1.2 var(--mono); background: var(--marker); color: var(--marker-ink); padding: 3px 6px; border-radius: 3px; pointer-events: none; white-space: nowrap; box-shadow: 0 8px 20px -6px rgba(0,0,0,.35); }
+  .done-note { font-size: 15px; color: var(--ink-2); margin-top: 16px; min-height: 24px; }
+  .done-note button { font: inherit; background: none; border: 0; padding: 0; text-decoration: underline; text-underline-offset: 3px; color: var(--ink); cursor: pointer; }
+
+  /* ---------- sections ---------- */
+  section.wrap { margin-top: 96px; }  /* beats .wrap's margin: 0 auto */
+  h2 { font-size: clamp(34px, 5vw, 60px); line-height: 1; letter-spacing: -.035em; font-weight: 750; margin: 14px 0 18px; max-width: 760px; }
+  .section-lede { color: var(--ink-2); font-size: 19px; max-width: 640px; margin: 0 0 40px; }
+
+  .modes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+  .mode { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  .mode h3 { margin: 0; font-size: 19px; letter-spacing: -.01em; }
+  .mode p { margin: 0; font-size: 14px; color: var(--ink-2); }
+  .mode .in { font: 12.5px/1.6 var(--mono); background: var(--tape); border: 1px dashed var(--line-2); border-radius: 6px; padding: 8px 10px; white-space: pre; overflow: hidden; color: var(--ink-2); min-height: 74px; }
+  .mode .in table { border-collapse: collapse; }
+  .mode .in td { border: 1px solid var(--line-2); padding: 1px 5px; }
+  .mode .out { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip { font: 12px/1 var(--mono); padding: 5px 7px; border-radius: 4px; background: var(--paper-2); border: 1px solid var(--line); white-space: nowrap; }
+  .chip:first-child { background: var(--marker); color: var(--marker-ink); border-color: transparent; }
+  .arrow { font: 12px/1 var(--mono); color: var(--ink-3); }
+
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+  .feature { padding: 28px 26px 30px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .feature .n { font: 500 12px/1 var(--mono); color: var(--green); }
+  .feature h3 { font-size: 22px; letter-spacing: -.015em; margin: 14px 0 8px; line-height: 1.15; }
+  .feature p { margin: 0; color: var(--ink-2); font-size: 15.5px; }
+
+  .showcase { position: relative; display: grid; grid-template-columns: 1fr 300px; gap: 28px; align-items: start; }
+  .frame { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+  .frame .bar { height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--ink-2); }
+  .frame .bar img { width: 16px; height: 16px; }
+  .frame .bar .wc { margin-left: auto; display: flex; gap: 18px; color: var(--ink-3); font: 13px var(--mono); }
+  .side-shot { display: flex; flex-direction: column; gap: 14px; }
+  .side-shot .frame { box-shadow: var(--shadow); }
+  .caption { font-size: 14px; color: var(--ink-2); }
+  .caption b { color: var(--ink); }
+
+  .shortcuts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+  .sc { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  .sc .ks { display: flex; gap: 6px; align-items: center; }
+  .sc .k { font: 600 13px/1 var(--mono); padding: 8px 10px; border: 1px solid var(--line-2); border-bottom-width: 4px; border-radius: 8px; background: var(--paper); }
+  .sc span.txt { color: var(--ink-2); font-size: 15px; }
+
+  .download {
+    margin-top: 110px; background: var(--ink); color: var(--paper); border-radius: 28px; padding: 64px 56px;
+    display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 48px; align-items: center; position: relative; overflow: hidden;
+  }
+  .download h2 { color: var(--paper); margin-top: 0; }
+  .download p { color: color-mix(in srgb, var(--paper) 72%, transparent); margin: 0; }
+  .download .eyebrow { color: color-mix(in srgb, var(--paper) 55%, transparent); }
+  .dl-list { display: grid; gap: 12px; }
+  .dl {
+    display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 14px; text-decoration: none;
+    background: color-mix(in srgb, var(--paper) 7%, transparent); border: 1px solid color-mix(in srgb, var(--paper) 16%, transparent);
+    border-radius: 14px; padding: 16px 18px; transition: background .15s, transform .12s;
+  }
+  .dl:hover { background: color-mix(in srgb, var(--paper) 12%, transparent); transform: translateY(-1px); }
+  .dl.primary { background: var(--marker); color: var(--marker-ink); border-color: var(--marker); }
+  .dl.primary:hover { background: color-mix(in srgb, var(--marker) 88%, white); }
+  .dl .ic { width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in currentColor 12%, transparent); }
+  .dl .ic svg { width: 22px; height: 22px; }
+  .dl b { display: block; font-size: 17px; }
+  .dl > span { min-width: 0; }
+  .dl small { font: 12.5px/1.4 var(--mono); opacity: .7; overflow-wrap: anywhere; }
+  .dl .size { font: 13px var(--mono); opacity: .75; }
+  .note { font-size: 14px; margin-top: 18px !important; }
+  .note code { font-family: var(--mono); font-size: 13px; }
+
+  .faq { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 48px; }
+  details { border-top: 1px solid var(--line); padding: 18px 0; }
+  summary { cursor: pointer; font-weight: 600; font-size: 18px; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; font-family: var(--mono); color: var(--ink-3); }
+  details[open] summary::after { content: "–"; }
+  details p { color: var(--ink-2); margin: 10px 0 0; font-size: 16px; }
+
+  footer { margin-top: 110px; border-top: 1px solid var(--line); padding: 28px 0 40px; font-size: 14px; color: var(--ink-3); }
+  footer .wrap { display: flex; gap: 24px; flex-wrap: wrap; align-items: center; }
+  footer .right { margin-left: auto; display: flex; gap: 20px; }
+
+  .reveal { opacity: 0; transform: translateY(16px); transition: opacity .6s, transform .6s cubic-bezier(.2,.8,.2,1); }
+  .reveal.in { opacity: 1; transform: none; }
+
+  @media (max-width: 980px) {
+    .modes { grid-template-columns: repeat(2, 1fr); }
+    .features { grid-template-columns: repeat(2, 1fr); }
+    .showcase { grid-template-columns: 1fr; }
+    .side-shot { flex-direction: row; align-items: flex-start; }
+    .side-shot .frame { width: 300px; flex: none; }
+    .download { grid-template-columns: minmax(0, 1fr); padding: 44px 28px; }
+  }
+  @media (max-width: 720px) {
+    body { font-size: 16px; }
+    nav .links a:not(.btn) { display: none; }
+    .hero { padding-top: 40px; }
+    .download { padding: 36px 20px; }
+    .dl { grid-template-columns: 40px minmax(0, 1fr) auto; padding: 14px; }
+    .demo { grid-template-columns: 1fr; }
+    .demo-col { padding: 20px; }
+    .demo-col + .demo-col { border-left: 0; border-top: 1px dashed var(--line-2); }
+    .modes, .features, .faq { grid-template-columns: 1fr; }
+    .side-shot { flex-direction: column; }
+    .side-shot .frame { width: 100%; max-width: 320px; }
+    section.wrap { margin-top: 72px; }
+    .dl small { display: none; }
+    .download { margin-top: 80px; border-radius: 20px; }
+    .key { min-width: 48px; height: 46px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    h1 .w, .reveal { opacity: 1; transform: none; }
+    html { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+
+<nav id="nav">
+  <div class="wrap">
+    <a class="brand" href="#"><img src="assets/icon-256.png" alt="">Sequential Paste</a>
+    <div class="links">
+      <a href="#try">Try it</a>
+      <a href="#modes">What you can copy</a>
+      <a href="#features">Features</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/imsayanpaul/sequential-paste">GitHub</a>
+      <a class="btn" href="#download">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero wrap" id="try">
+  <div class="eyebrow"><span class="dot"></span>Free for Windows 10 and 11</div>
+  <h1 aria-label="Copy once. Paste one at a time.">
+    <span class="w" style="animation-delay:.05s">Copy</span> <span class="w" style="animation-delay:.15s">once.</span><br>
+    <span class="w" style="animation-delay:.45s">Paste</span> <span class="w hl" style="animation-delay:.6s">one</span> <span class="w" style="animation-delay:.75s">at</span> <span class="w" style="animation-delay:.85s">a</span> <span class="w" style="animation-delay:.95s">time.</span>
+  </h1>
+  <p class="lede">Sequential Paste turns anything you copy into a queue. Each press of <span class="mono">Ctrl+Shift+V</span> pastes the next line, value or spreadsheet cell, so you can fill forms without flipping between windows.</p>
+  <div class="cta">
+    <a class="btn green" href="https://github.com/imsayanpaul/sequential-paste/raw/main/installer/SequentialPaste_Setup_v1.0.0.exe">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v13m0 0-5-5m5 5 5-5M4 20h16"/></svg>
+      Download for Windows
+    </a>
+    <a class="btn ghost" href="#demo-box">Try it right here</a>
+  </div>
+  <p class="meta">v1.0.0 · 34.6 MB installer · open source, MIT</p>
+
+  <div class="demo reveal" id="demo-box">
+    <div class="demo-col">
+      <div class="label"><span>Your clipboard</span><button type="button" id="edit-btn">Use my own list</button></div>
+      <div class="tape" id="tape"></div>
+      <div class="keys">
+        <button class="keygroup" id="keys" type="button" aria-label="Paste the next item (Ctrl+Shift+V)">
+          <span class="key wide">Ctrl</span><span class="key wide">Shift</span><span class="key">V</span>
+        </button>
+      </div>
+      <p class="hint" id="hint">Press <b>Ctrl+Shift+V</b> on your keyboard (yes, on this page) or click the keys.</p>
+    </div>
+    <div class="demo-col">
+      <div class="label"><span>A form somewhere</span></div>
+      <div class="form" id="form"></div>
+      <div class="status">
+        <span id="pos">Item 1 of 4 is next</span>
+        <span class="after">after each item
+          <span class="seg" role="group" aria-label="After each item">
+            <button type="button" data-after="tab" aria-pressed="true">Tab</button>
+            <button type="button" data-after="none" aria-pressed="false">Nothing</button>
+          </span>
+          <span class="tabflash" id="tabflash">Tab</span>
+        </span>
+      </div>
+      <div class="done-note" id="done-note" aria-live="polite"></div>
+    </div>
+  </div>
+</header>
+
+<section id="modes" class="wrap">
+  <div class="eyebrow">Split copied text into</div>
+  <h2 class="reveal">Whatever you copy, it finds the pieces.</h2>
+  <p class="section-lede reveal">Pick how a copy gets split. Change it any time, and the list you already copied is split again.</p>
+  <div class="modes">
+    <div class="mode reveal">
+      <h3>Lines</h3>
+      <div class="in">Priya Sharma
+Bengaluru
+98450 12345</div>
+      <div class="out"><span class="chip">Priya Sharma</span><span class="chip">Bengaluru</span><span class="chip">98450…</span></div>
+      <p>Each line is one item. The default.</p>
+    </div>
+    <div class="mode reveal">
+      <h3>Commas</h3>
+      <div class="in">red, green, blue</div>
+      <div class="out"><span class="chip">red</span><span class="chip">green</span><span class="chip">blue</span></div>
+      <p>Comma-separated values, tags, lists.</p>
+    </div>
+    <div class="mode reveal">
+      <h3>Spreadsheet cells</h3>
+      <div class="in"><table><tr><td>Priya</td><td>Pune</td><td>31</td></tr><tr><td>Arjun</td><td></td><td>27</td></tr></table></div>
+      <div class="out"><span class="chip">Priya</span><span class="chip">Pune</span><span class="chip">31</span><span class="chip">Arjun</span><span class="chip">·</span></div>
+      <p>Row by row. Empty cells are kept, so fields stay lined up.</p>
+    </div>
+    <div class="mode reveal">
+      <h3>Sentences</h3>
+      <div class="in">Hi Dr. Rao. It
+shipped. Thanks!</div>
+      <div class="out"><span class="chip">Hi Dr. Rao.</span><span class="chip">It shipped.</span><span class="chip">Thanks!</span></div>
+      <p>Knows Mr., Dr., decimals, URLs. Also । 。 ؟</p>
+    </div>
+    <div class="mode reveal">
+      <h3>Paragraphs</h3>
+      <div class="in">Hi Priya,
+
+Your order…</div>
+      <div class="out"><span class="chip">Hi Priya,</span><span class="chip">Your order…</span></div>
+      <p>Split at blank lines, for longer blocks of text.</p>
+    </div>
+  </div>
+</section>
+
+<section id="features" class="wrap">
+  <div class="eyebrow">Small app, careful details</div>
+  <h2 class="reveal">Built for the 40th field, not just the first.</h2>
+  <p class="section-lede reveal">The basics are simple. These are the parts that make it pleasant on a long form.</p>
+  <div class="features">
+    <div class="feature reveal"><div class="n">01</div><h3>Fill a whole form</h3><p>Set it to press Tab after each item and every Ctrl+Shift+V lands in the next field. Or Enter, for one item per line.</p></div>
+    <div class="feature reveal"><div class="n">02</div><h3>Types where paste is blocked</h3><p>Some sites refuse pasting. Switch to typing and it types each item out, key by key. Hold Esc to stop.</p></div>
+    <div class="feature reveal"><div class="n">03</div><h3>Stays out of your way</h3><p>The shortcuts only act while a list is loaded. The rest of the time Ctrl+Shift+V does what it always did in your browser.</p></div>
+    <div class="feature reveal"><div class="n">04</div><h3>Your clipboard comes back</h3><p>After each paste, whatever you had copied is put back on the clipboard, untouched.</p></div>
+    <div class="feature reveal"><div class="n">05</div><h3>Skip, go back, start over</h3><p>Missed a field? Ctrl+Shift+B steps back. Ctrl+Shift+N skips one. Ctrl+Shift+R starts again.</p></div>
+    <div class="feature reveal"><div class="n">06</div><h3>Nothing leaves your PC</h3><p>No account, no internet, no tracking. Settings live in a small file in your AppData folder.</p></div>
+  </div>
+</section>
+
+<section id="app" class="wrap">
+  <div class="eyebrow">The app</div>
+  <h2 class="reveal">Lives in your tray. Explains itself.</h2>
+  <p class="section-lede reveal">Click the tray icon for the app window. Hover any setting and it acts out what it does on a sample form.</p>
+  <div class="showcase">
+    <figure class="frame reveal" style="margin:0">
+      <div class="bar"><img src="assets/icon-256.png" alt="">Sequential Paste<span class="wc">–&nbsp;&nbsp;□&nbsp;&nbsp;×</span></div>
+      <img src="assets/hover-preview.gif" alt="The app window: hovering each setting plays a preview of what it does" loading="lazy" width="737" height="475">
+    </figure>
+    <div class="side-shot reveal">
+      <figure class="frame" style="margin:0"><img src="assets/tray-menu.png" alt="Tray menu with status, navigation and settings" loading="lazy" width="307" height="361"></figure>
+      <p class="caption"><b>Right-click the tray icon</b> for the same controls: what's next, skip or go back, and every setting.</p>
+    </div>
+  </div>
+</section>
+
+<section class="wrap">
+  <div class="eyebrow">Shortcuts</div>
+  <h2 class="reveal">Four shortcuts. One you'll use.</h2>
+  <div class="shortcuts">
+    <div class="sc reveal"><div class="ks"><span class="k">Ctrl</span><span class="k">Shift</span><span class="k">V</span></div><span class="txt">Paste the next item</span></div>
+    <div class="sc reveal"><div class="ks"><span class="k">Ctrl</span><span class="k">Shift</span><span class="k">N</span></div><span class="txt">Skip the next item</span></div>
+    <div class="sc reveal"><div class="ks"><span class="k">Ctrl</span><span class="k">Shift</span><span class="k">B</span></div><span class="txt">Go back one item</span></div>
+    <div class="sc reveal"><div class="ks"><span class="k">Ctrl</span><span class="k">Shift</span><span class="k">R</span></div><span class="txt">Start over from the first</span></div>
+  </div>
+</section>
+
+<div class="wrap">
+  <div class="download" id="download">
+    <div>
+      <div class="eyebrow">Download</div>
+      <h2>Get it in under a minute.</h2>
+      <p>Free and open source. Installs for your account only, no admin rights needed, with an option to start with Windows.</p>
+      <p class="note">Windows may show a SmartScreen warning because the app isn't code-signed yet. Choose <b>More info</b>, then <b>Run anyway</b>. The full source is on GitHub.</p>
+    </div>
+    <div class="dl-list">
+      <a class="dl primary" href="https://github.com/imsayanpaul/sequential-paste/raw/main/installer/SequentialPaste_Setup_v1.0.0.exe">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v13m0 0-5-5m5 5 5-5M4 20h16"/></svg></span>
+        <span><b>Installer</b><small>SequentialPaste_Setup_v1.0.0.exe</small></span>
+        <span class="size">34.6 MB</span>
+      </a>
+      <a class="dl" href="https://github.com/imsayanpaul/sequential-paste/raw/main/dist/SequentialPaste.exe">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6M9 11h6M9 15h3"/></svg></span>
+        <span><b>Portable</b><small>SequentialPaste.exe · no install</small></span>
+        <span class="size">32.8 MB</span>
+      </a>
+      <a class="dl" href="https://github.com/imsayanpaul/sequential-paste">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c2-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg></span>
+        <span><b>Source code</b><small>github.com/imsayanpaul/sequential-paste</small></span>
+        <span class="size">MIT</span>
+      </a>
+    </div>
+  </div>
+</div>
+
+<section id="faq" class="wrap">
+  <div class="eyebrow">Questions</div>
+  <h2 class="reveal">Good to know.</h2>
+  <div class="faq">
+    <div>
+      <details><summary>Does it send my clipboard anywhere?</summary><p>No. It never connects to the internet. Your text stays in memory on your PC and is gone when you copy something else.</p></details>
+      <details><summary>Will it break Ctrl+Shift+V in my browser?</summary><p>No. The shortcuts only act while you have a list of two or more items loaded. Otherwise they go to the app you're using as normal. You can also pause them from the tray.</p></details>
+      <details><summary>A site won't let me paste. Now what?</summary><p>Switch "Insert items by" to Typing it out. It types each item as keystrokes, which works on most paste-blocked fields.</p></details>
+    </div>
+    <div>
+      <details><summary>Why does Windows warn me when I run it?</summary><p>The app isn't code-signed, which costs money every year, so SmartScreen doesn't recognise it yet. Choose More info, then Run anyway. You can read every line of the source on GitHub.</p></details>
+      <details><summary>What does it need?</summary><p>Windows 10 or 11. The app window uses Microsoft Edge WebView2, which Windows 11 and current Windows 10 already have. Without it, everything still works from the tray menu.</p></details>
+      <details><summary>How do I uninstall it?</summary><p>Settings, then Apps, then Sequential Paste, then Uninstall. The portable version is just one file you can delete.</p></details>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="assets/icon-256.png" alt="">Sequential Paste</a>
+    <span>Made by Sayan Paul. MIT license.</span>
+    <div class="right">
+      <a href="https://github.com/imsayanpaul/sequential-paste">GitHub</a>
+      <a href="https://github.com/imsayanpaul/sequential-paste/issues">Report a problem</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const DEFAULT = { items: ['Priya Sharma', 'Bengaluru', '98450 12345', 'priya@example.com'], labels: ['Name', 'City', 'Phone', 'Email'] };
+  const MAX_ITEMS = 8;
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let items = DEFAULT.items.slice();
+  let labels = DEFAULT.labels.slice();
+  let index = 0;
+  let after = 'tab';
+  let editing = false;
+  let busy = false;
+
+  const $ = id => document.getElementById(id);
+  const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function renderTape() {
+    if (editing) return;
+    $('tape').innerHTML = '<ol>' + items.map((t, i) =>
+      `<li class="${i < index ? 'used' : i === index ? 'next' : ''}"><span class="t">${esc(t)}</span></li>`).join('') + '</ol>';
+  }
+
+  function renderForm() {
+    $('form').innerHTML = items.map((_, i) =>
+      `<div class="field"><label>${esc(labels[i] || 'Field ' + (i + 1))}</label><div class="input" data-i="${i}"></div></div>`).join('');
+    focusField(0);
+  }
+
+  function focusField(i) {
+    document.querySelectorAll('#form .input').forEach(el => el.classList.toggle('focus', Number(el.dataset.i) === i));
+  }
+
+  function renderStatus() {
+    $('pos').textContent = index < items.length ? `Item ${index + 1} of ${items.length} is next` : `All ${items.length} pasted`;
+    $('done-note').innerHTML = index >= items.length
+      ? `That's the whole idea. <button type="button" id="again">Start over</button> (Ctrl+Shift+R in the app)`
+      : '';
+  }
+
+  function reset() {
+    index = 0;
+    pending = 0;
+    renderTape(); renderForm(); renderStatus();
+  }
+
+  function pressKeys() {
+    const k = $('keys');
+    k.classList.add('down');
+    setTimeout(() => k.classList.remove('down'), 140);
+  }
+
+  function fly(fromEl, toEl, text) {
+    return new Promise(resolve => {
+      if (reduceMotion || !fromEl || !toEl) return resolve();
+      const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
+      const f = document.createElement('div');
+      f.className = 'flyer'; f.textContent = text;
+      f.style.left = a.left + 'px'; f.style.top = a.top + 'px';
+      document.body.appendChild(f);
+      const dx = b.left + 14 - a.left, dy = b.top + (b.height - f.offsetHeight) / 2 - a.top;
+      f.animate([{ transform: 'translate(0,0) rotate(0)' }, { transform: `translate(${dx * .5}px, ${dy * .5 - 30}px) rotate(-3deg)`, offset: .5 }, { transform: `translate(${dx}px, ${dy}px) rotate(0)` }],
+                { duration: 520, easing: 'cubic-bezier(.4,.1,.2,1)' }).onfinish = () => { f.remove(); resolve(); };
+    });
+  }
+
+  let pending = 0;
+
+  function step() {
+    if (editing) applyEdit();
+    pressKeys();
+    // Presses during an animation are queued, like key repeats in the real app
+    pending = Math.min(pending + 1, items.length);
+    if (!busy) drain();
+  }
+
+  async function drain() {
+    busy = true;
+    while (pending > 0) {
+      pending--;
+      await pasteNext();
+    }
+    busy = false;
+  }
+
+  async function pasteNext() {
+    if (index >= items.length) { pending = 0; renderStatus(); return; }
+    const i = index;
+    const row = document.querySelector(`#tape li:nth-child(${i + 1}) .t`);
+    const field = document.querySelector(`#form .input[data-i="${i}"]`);
+    await fly(row, field, items[i]);
+    field.textContent = items[i];
+    field.classList.remove('filled'); void field.offsetWidth; field.classList.add('filled');
+    index++;
+    renderTape();
+    if (after === 'tab') {
+      const t = $('tabflash');
+      t.classList.add('on'); setTimeout(() => t.classList.remove('on'), 300);
+      focusField(index < items.length ? index : -1);
+    } else {
+      // "Nothing": the caret stays put; the visitor would click the next field
+      focusField(-1);
+      setTimeout(() => focusField(index < items.length ? index : -1), 450);
+    }
+    renderStatus();
+  }
+
+  function applyEdit() {
+    const text = $('tape').querySelector('textarea').value;
+    const parsed = text.split('\n').map(s => s.trim()).filter(Boolean).slice(0, MAX_ITEMS);
+    editing = false;
+    $('edit-btn').textContent = 'Use my own list';
+    if (parsed.length) {
+      items = parsed;
+      labels = parsed.join('\n') === DEFAULT.items.join('\n') ? DEFAULT.labels.slice() : [];
+    }
+    reset();
+  }
+
+  $('edit-btn').addEventListener('click', () => {
+    if (editing) return applyEdit();
+    editing = true;
+    $('edit-btn').textContent = 'Done';
+    $('tape').innerHTML = `<textarea aria-label="Your list, one item per line" spellcheck="false">${esc(items.join('\n'))}</textarea>`;
+    const ta = $('tape').querySelector('textarea');
+    ta.focus(); ta.select();
+    $('hint').innerHTML = 'Paste or type a list, one item per line (up to 8). Then press <b>Ctrl+Shift+V</b>.';
+  });
+
+  $('keys').addEventListener('click', step);
+  document.addEventListener('click', e => { if (e.target.id === 'again') reset(); });
+  document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
+    after = b.dataset.after;
+    document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  }));
+
+  document.addEventListener('keydown', e => {
+    const mod = e.ctrlKey || e.metaKey;
+    if (!mod || !e.shiftKey) return;
+    const k = e.key.toLowerCase();
+    if (k === 'v') {
+      // Leave normal paste alone while typing in the list editor
+      if (editing && document.activeElement && document.activeElement.tagName === 'TEXTAREA') return;
+      e.preventDefault();
+      step();
+    } else if (k === 'r' && index > 0) {
+      e.preventDefault();
+      reset();
+    }
+  });
+
+  // Nav border on scroll, and reveal-on-scroll
+  const nav = $('nav');
+  addEventListener('scroll', () => nav.classList.toggle('scrolled', scrollY > 8), { passive: true });
+  const io = new IntersectionObserver(entries => entries.forEach(en => {
+    if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
+  }), { rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+  reset();
+})();
+</script>
+</body>
+</html>
