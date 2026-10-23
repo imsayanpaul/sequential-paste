@@ -2,11 +2,12 @@
 Renders the Sequential Paste logo to every file that uses it:
 
     assets/icon.ico            app, tray, exe and installer icon
-    docs/assets/*.png, .svg    website favicon, touch icon and logo
+    website/app/icon.svg       website favicon
+    website/app/apple-icon.png website touch icon
 
 The mark: three stacked strips of tape on a dark tile, the top one pulled out
 in highlighter yellow (the next item in the queue). Coordinates are on a
-64-unit grid, shared with docs/assets/logo.svg.
+64-unit grid, shared with website/app/icon.svg and website/components/Logo.tsx.
 
 Run from the project root:  python tools/make_logo.py
 """
@@ -63,13 +64,11 @@ def main():
     images[0].save(os.path.join(ROOT, 'assets', 'icon.ico'), format='ICO',
                    sizes=[(s, s) for s in sizes], append_images=images[1:])
 
-    docs = os.path.join(ROOT, 'docs', 'assets')
-    for name, size in (('logo-512.png', 512), ('icon-256.png', 256),
-                       ('apple-touch-icon.png', 180), ('favicon.png', 32)):
-        render(size).save(os.path.join(docs, name))
-    with open(os.path.join(docs, 'logo.svg'), 'w', encoding='utf-8') as f:
+    site = os.path.join(ROOT, 'website', 'app')
+    render(180).save(os.path.join(site, 'apple-icon.png'))
+    with open(os.path.join(site, 'icon.svg'), 'w', encoding='utf-8') as f:
         f.write(SVG)
-    print('Logo written to assets/icon.ico and docs/assets/')
+    print('Logo written to assets/icon.ico and website/app/')
 
 
 if __name__ == '__main__':

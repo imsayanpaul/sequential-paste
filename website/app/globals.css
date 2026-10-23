@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Colours as RGB triplets so Tailwind can add opacity (bg-ink/10) */
+:root {
+  --paper: 242 239 232;
+  --paper-2: 232 228 217;
+  --card: 251 250 246;
+  --tape: 255 253 247;
+  --ink: 22 21 19;
+  --ink-2: 75 72 64;
+  --ink-3: 138 133 122;
+  --line: 216 211 198;
+  --line-2: 196 190 175;
+  --green: 31 135 73;
+  --green-ink: 255 255 255;
+  --marker: 255 225 90;
+  --marker-ink: 22 21 19;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: 19 19 17;
+    --paper-2: 26 26 23;
+    --card: 29 28 25;
+    --tape: 34 33 29;
+    --ink: 241 238 230;
+    --ink-2: 189 184 172;
+    --ink-3: 133 128 111;
+    --line: 47 45 40;
+    --line-2: 63 60 53;
+    --green: 69 192 119;
+    --green-ink: 13 26 18;
+    --marker: 232 201 60;
+    --marker-ink: 22 21 19;
+    color-scheme: dark;
+  }
+}
+
+@layer base {
+  html { scroll-behavior: smooth; scroll-padding-top: 96px; }
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+    font-size: 17px;
+    line-height: 1.55;
+    overflow-x: hidden;
+  }
+  ::selection { @apply bg-marker text-marker-ink; }
+}
+
+@layer components {
+  .wrap { @apply mx-auto w-full max-w-[1160px] px-5 sm:px-6; }
+
+  .eyebrow { @apply font-mono text-[12.5px] uppercase tracking-[.08em] text-ink-3; }
+
+  .h2 {
+    @apply mt-3 mb-4 max-w-[780px] text-[clamp(34px,5.2vw,64px)] font-[780] leading-[.98] tracking-[-.04em];
+  }
+
+  .lede { @apply mb-10 max-w-[640px] text-[18px] text-ink-2 sm:text-[19px]; }
+
+  /* Highlighter stroke behind a word */
+  .marker {
+    background: linear-gradient(transparent 58%, rgb(var(--marker)) 58%, rgb(var(--marker)) 92%, transparent 92%);
+    padding: 0 .06em;
+    margin: 0 -.06em;
+  }
+
+  .kbd {
+    @apply inline-grid place-items-center rounded-lg border border-line-2 bg-paper px-2.5 py-2 font-mono text-[13px] font-semibold leading-none text-ink;
+    border-bottom-width: 4px;
+  }
+
+  .card { @apply rounded-2xl border border-line bg-card; }
+
+  .dot-grid {
+    background-image: radial-gradient(rgb(var(--ink) / .13) 1.2px, transparent 1.4px);
+    background-size: 22px 22px;
+  }
+}
+
+/* Looping micro-animations for the feature tiles */
+@keyframes fill-in { 0%, 4% { width: 0; } 9%, 88% { width: 100%; } 94%, 100% { width: 0; } }
+@keyframes ring-on { 0%, 1% { box-shadow: none; } 2%, 14% { box-shadow: 0 0 0 2px rgb(var(--marker)); } 15%, 100% { box-shadow: none; } }
+@keyframes type-it { 0%, 6% { width: 0; } 60%, 90% { width: 16ch; } 100% { width: 0; } }
+@keyframes flash-fill { 0% { background: rgb(var(--marker)); } 100% { background: rgb(var(--paper)); } }
+
+.anim-fill { animation: fill-in 8s infinite; }
+.anim-ring { animation: ring-on 8s infinite; }
+.anim-type { animation: type-it 5s steps(16) infinite; }
+.anim-flash { animation: flash-fill .6s; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .anim-fill, .anim-type { animation: none; width: 100%; }
+  .anim-type { width: 16ch; }
+  .anim-ring { animation: none; }
+}

@@ -139,6 +139,18 @@ The installer is built from `installer.iss` with [Inno Setup](https://jrsoftware
 | `settings_manager.py` | Settings file and the Start with Windows entry |
 | `error_logger.py` | Error log |
 | `config.py` | Constants |
+| `tools/make_logo.py` | Renders the logo to the app icon and the website icons |
+| `website/` | The download site (Next.js, Tailwind, Framer Motion) |
+
+### Website
+
+```bash
+cd website
+npm install
+npm run dev        # http://localhost:3000
+```
+
+It deploys on Vercel: import the repo and set the project's **Root Directory** to `website`.
 
 ## License
 
