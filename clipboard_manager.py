@@ -4,7 +4,6 @@ Clipboard Manager - Core logic for sequential paste functionality
 import re
 import threading
 import functools
-import pyperclip
 from typing import Optional, List
 from config import DELIMITER_PATTERNS, DelimiterType, DEFAULT_DELIMITER, ABBREVIATIONS
 
@@ -26,7 +25,6 @@ class ClipboardManager:
         self.segments: List[str] = []
         self.current_index: int = 0
         self.delimiter: DelimiterType = DEFAULT_DELIMITER
-        self._last_clipboard: str = ""
         # State is shared by the hotkey worker, clipboard monitor and tray threads
         self.lock = threading.RLock()
     
@@ -39,24 +37,6 @@ class ClipboardManager:
             self.current_index = 0
     
     @_locked
-    def update_from_clipboard(self) -> bool:
-        """
-        Check clipboard for new content and update if changed.
-        Returns True if content was updated, False otherwise.
-        """
-        try:
-            clipboard_text = pyperclip.paste()
-            if clipboard_text and clipboard_text != self._last_clipboard:
-                self._last_clipboard = clipboard_text
-                self.current_content = clipboard_text
-                self._parse_content()
-                self.current_index = 0
-                return True
-            return False
-        except Exception:
-            return False
-    
-    @_locked
     def load_text(self, text: str) -> None:
         """
         Load text directly and always reset sequence.
@@ -64,7 +44,6 @@ class ClipboardManager:
         """
         if not text:
             return
-        self._last_clipboard = text
         self.current_content = text
         self._parse_content()
         self.current_index = 0
@@ -183,6 +162,20 @@ class ClipboardManager:
         
         return final_sentences
     
+    def _split_cells(self, text: str) -> List[str]:
+        """
+        Split spreadsheet cells (tab-separated, one row per line), row by row.
+        Empty cells inside a row are kept so that with "After each item: Tab"
+        every cell still lands in its own form field. Blank rows are dropped.
+        """
+        cells = []
+        for row in text.split('\n'):
+            row = row.rstrip('\r')
+            if not row.strip():
+                continue
+            cells.extend(cell.strip() for cell in row.split('\t'))
+        return cells
+
     def _parse_content(self) -> None:
         """Split current content into segments based on delimiter"""
         if not self.current_content:
@@ -192,6 +185,8 @@ class ClipboardManager:
         if self.delimiter == DelimiterType.SENTENCE:
             # Use smart sentence splitting
             self.segments = self._split_sentences(self.current_content)
+        elif self.delimiter == DelimiterType.TAB:
+            self.segments = self._split_cells(self.current_content)
         else:
             pattern = DELIMITER_PATTERNS.get(self.delimiter)
             if pattern:

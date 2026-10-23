@@ -104,10 +104,11 @@ begin
     SuppressibleMsgBox('Sequential Paste has been installed. It runs in your system tray.' + #13#10 + #13#10 +
            'Look for the clipboard icon near the clock (bottom-right of your screen).' + #13#10 + #13#10 +
            'Shortcuts:' + #13#10 +
-           '  Ctrl+Shift+V - Paste next segment' + #13#10 +
-           '  Ctrl+Shift+N - Skip segment' + #13#10 +
+           '  Ctrl+Shift+V - Paste the next item' + #13#10 +
+           '  Ctrl+Shift+N - Skip an item' + #13#10 +
            '  Ctrl+Shift+B - Go back' + #13#10 +
-           '  Ctrl+Shift+R - Reset sequence',
+           '  Ctrl+Shift+R - Start over' + #13#10 + #13#10 +
+           'Click the tray icon to pause the shortcuts.',
            mbInformation, MB_OK, IDOK);
   end;
 end;

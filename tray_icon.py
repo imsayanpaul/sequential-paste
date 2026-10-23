@@ -1,281 +1,272 @@
 """
 System Tray Icon - Background application interface
 """
-import pystray
-from PIL import Image, ImageDraw
+import os
 import threading
+import pystray
+from PIL import Image, ImageDraw, ImageOps
 from typing import Callable, Optional
-from config import APP_NAME, APP_VERSION, DelimiterType
+from config import APP_NAME, DelimiterType
 from clipboard_manager import ClipboardManager
+from hotkey_handler import HotkeyHandler
 from settings_manager import get_settings, set_startup_with_windows, is_startup_enabled
 import notification
 
 
+Item = pystray.MenuItem
+SEPARATOR = pystray.Menu.SEPARATOR
+
+DELIMITER_LABELS = [
+    (DelimiterType.LINE, "Lines"),
+    (DelimiterType.COMMA, "Commas"),
+    (DelimiterType.TAB, "Tabs (spreadsheet cells)"),
+    (DelimiterType.SENTENCE, "Sentences"),
+    (DelimiterType.PARAGRAPH, "Paragraphs"),
+]
+
+PASTE_MODE_LABELS = [
+    ('paste', "Paste (Ctrl+V)"),
+    ('type', "Typed keystrokes"),
+]
+
+AFTER_EACH_LABELS = [
+    ('none', "Nothing"),
+    ('tab', "Press Tab"),
+    ('enter', "Press Enter"),
+]
+
+PREVIEW_LENGTH = 32
+
+
+def _escape(text: str) -> str:
+    """Make arbitrary text safe for a Windows menu label"""
+    # '&' marks a keyboard accelerator in Win32 menus, and tabs/newlines
+    # would break the layout
+    text = ' '.join(text.split())
+    return text.replace('&', '&&')
+
+
+def _short_label(labels, value) -> str:
+    """Current choice shown next to a submenu, e.g. 'Split by    Lines'"""
+    for key, label in labels:
+        if key == value:
+            return label.split(' (')[0]
+    return ''
+
+
 class TrayIcon:
     """System tray icon with menu for settings and status"""
-    
-    def __init__(self, clipboard_manager: ClipboardManager):
+
+    def __init__(self, clipboard_manager: ClipboardManager, hotkey_handler: HotkeyHandler):
         self.clipboard_manager = clipboard_manager
+        self.hotkey_handler = hotkey_handler
         self.icon: Optional[pystray.Icon] = None
         self._on_exit: Optional[Callable] = None
         self.settings = get_settings()
-    
+        self._images = self._build_images()
+        self._update_lock = threading.Lock()
+
     def set_exit_callback(self, callback: Callable):
-        """Set callback for when user clicks Exit"""
+        """Set callback for when user clicks Quit"""
         self._on_exit = callback
-    
-    def _create_icon_image(self, color: str = "#4CAF50") -> Image.Image:
-        """Create a simple icon image"""
-        size = 64
-        image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+
+    # ------------------------------------------------------------------
+    # Icon images
+    # ------------------------------------------------------------------
+
+    def _load_base_image(self) -> Image.Image:
+        """Get application icon from assets or fallback to generated icon"""
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'icon.ico')
+        try:
+            image = Image.open(icon_path)
+            image.load()
+            return image.convert('RGBA').resize((64, 64), Image.LANCZOS)
+        except Exception:
+            return self._create_icon_image()
+
+    def _create_icon_image(self) -> Image.Image:
+        """Simple clipboard icon, used if the asset is missing"""
+        image = Image.new('RGBA', (64, 64), (0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
-        
-        # Draw clipboard background
-        draw.rounded_rectangle(
-            [8, 4, 56, 60],
-            radius=6,
-            fill=color
-        )
-        
-        # Draw clipboard clip at top
-        draw.rectangle([24, 0, 40, 10], fill="#333333")
-        draw.rectangle([20, 6, 44, 14], fill="#666666")
-        
-        # Draw lines representing text
-        line_color = "#FFFFFF"
-        draw.rectangle([14, 22, 50, 26], fill=line_color)
-        draw.rectangle([14, 32, 45, 36], fill=line_color)
-        draw.rectangle([14, 42, 48, 46], fill=line_color)
-        
+        draw.rounded_rectangle([8, 4, 56, 60], radius=6, fill="#3FA34D")
+        draw.rectangle([20, 0, 44, 12], fill="#2D7A38")
+        for top, right in ((22, 50), (32, 45), (42, 48)):
+            draw.rectangle([14, top, right, top + 4], fill="#FFFFFF")
         return image
-    
-    def _get_status_text(self) -> str:
-        """Get current status for tooltip"""
-        if not self.clipboard_manager.has_content:
-            return f"{APP_NAME} - No content"
-        
+
+    def _build_images(self) -> dict:
+        base = self._load_base_image()
+
+        # Paused: greyscale, slightly faded
+        alpha = base.getchannel('A').point(lambda a: int(a * 0.6))
+        paused = ImageOps.grayscale(base).convert('RGBA')
+        paused.putalpha(alpha)
+
+        # Finished: small check badge in the corner
+        done = base.copy()
+        draw = ImageDraw.Draw(done)
+        draw.ellipse([30, 30, 63, 63], fill="#1F6FEB", outline="#FFFFFF", width=3)
+        draw.line([(38, 47), (44, 53), (55, 39)], fill="#FFFFFF", width=5)
+
+        return {'active': base, 'paused': paused, 'done': done}
+
+    def _current_image(self) -> Image.Image:
+        if self.hotkey_handler.paused:
+            return self._images['paused']
+        if self.hotkey_handler.has_active_sequence and self.clipboard_manager.is_exhausted():
+            return self._images['done']
+        return self._images['active']
+
+    # ------------------------------------------------------------------
+    # Status text
+    # ------------------------------------------------------------------
+
+    def _status_text(self) -> str:
+        if self.hotkey_handler.paused:
+            return "Shortcuts paused"
+        if not self.hotkey_handler.has_active_sequence:
+            return "Copy a list to start"
         current, total = self.clipboard_manager.get_position()
-        remaining = self.clipboard_manager.get_remaining_count()
-        
-        if remaining == 0:
-            return f"{APP_NAME} - Complete ({total} items)"
-        else:
-            return f"{APP_NAME} - {remaining}/{total} remaining"
-    
-    def _get_preview_text(self) -> str:
-        """Get preview of next segment"""
+        if current >= total:
+            return f"All {total} items pasted"
+        return f"{current} of {total} pasted"
+
+    def _next_text(self) -> Optional[str]:
+        if not self.hotkey_handler.has_active_sequence:
+            return None
         next_seg = self.clipboard_manager.peek_next_segment()
-        if next_seg:
-            # Truncate if too long
-            if len(next_seg) > 50:
-                return f"Next: {next_seg[:47]}..."
-            return f"Next: {next_seg}"
-        return "No content"
-    
+        if next_seg is None:
+            return None
+        if not next_seg:
+            preview = "(empty cell)"
+        else:
+            preview = ' '.join(next_seg.split())
+            if len(preview) > PREVIEW_LENGTH:
+                preview = preview[:PREVIEW_LENGTH - 1].rstrip() + "…"
+            preview = f"“{preview}”"
+        return _escape(f"Next: {preview}") + "\tCtrl+Shift+V"
+
+    def _tooltip(self) -> str:
+        # Windows truncates tray tooltips at 127 characters
+        return f"{APP_NAME}: {self._status_text()}"[:127]
+
+    # ------------------------------------------------------------------
+    # Menu actions
+    # ------------------------------------------------------------------
+
     def _set_delimiter(self, delimiter: DelimiterType):
-        """Change delimiter and update menu"""
         def action(icon, item):
             self.clipboard_manager.set_delimiter(delimiter)
             self.settings.set_delimiter(delimiter)
-            self.update_menu()
+            self.update()
         return action
-    
-    def _reset_sequence(self, icon, item):
-        """Reset sequence to start"""
-        self.clipboard_manager.reset()
-        notification.notify_sequence_reset()
-        self.update_menu()
-    
-    def _toggle_notifications(self, icon, item):
-        """Toggle toast notifications on/off"""
-        current = self.settings.get('toast_enabled', False)
-        self.settings.set('toast_enabled', not current)
-        self.update_menu()
+
+    def _set_setting(self, key: str, value):
+        def action(icon, item):
+            self.settings.set(key, value)
+            self.update()
+        return action
+
+    def _toggle_setting(self, key: str, default: bool):
+        def action(icon, item):
+            self.settings.set(key, not self.settings.get(key, default))
+            self.update()
+        return action
 
     def _toggle_startup(self, icon, item):
-        """Toggle startup with Windows"""
-        current = is_startup_enabled()
-        if set_startup_with_windows(not current):
-            self.settings.set('startup_with_windows', not current)
-        self.update_menu()
+        set_startup_with_windows(not is_startup_enabled())
+        self.update()
 
-    def _set_paste_mode(self, mode: str):
-        """Change paste mode (paste or type)"""
-        def action(icon, item):
-            self.settings.set('paste_mode', mode)
-            self.update_menu()
-        return action
-    
-    def _exit_app(self, icon, item):
-        """Exit the application"""
+    def _toggle_pause(self, icon, item):
+        self.hotkey_handler.set_paused(not self.hotkey_handler.paused)
+
+    def _quit(self, icon, item):
         if self._on_exit:
             self._on_exit()
         icon.stop()
-    
-    def _get_icon_image(self) -> Image.Image:
-        """Get application icon from assets or fallback to generated icon"""
-        import os
-        for filename in ['icon.ico', 'icon.png']:
-            icon_path = os.path.join(os.path.dirname(__file__), 'assets', filename)
-            if os.path.exists(icon_path):
-                try:
-                    return Image.open(icon_path)
-                except Exception:
-                    pass
-        return self._create_icon_image()
+
+    # ------------------------------------------------------------------
+    # Menu
+    # ------------------------------------------------------------------
+
+    def _choice_menu(self, choices, current, make_action) -> pystray.Menu:
+        return pystray.Menu(*[
+            Item(label, make_action(value), checked=lambda item, v=value: v == current, radio=True)
+            for value, label in choices
+        ])
 
     def _create_menu(self) -> pystray.Menu:
         """Create the right-click menu"""
-        current_delimiter = self.clipboard_manager.delimiter
-        startup_enabled = is_startup_enabled()
-        
-        # Status and preview
-        if self.clipboard_manager.has_content:
-            current, total = self.clipboard_manager.get_position()
-            remaining = self.clipboard_manager.get_remaining_count()
-            status_text = f"Position: {current}/{total} ({remaining} remaining)"
-            preview_text = self._get_preview_text()
-        else:
-            status_text = "No content loaded"
-            preview_text = "Copy text to start"
-        
+        handler = self.hotkey_handler
+        active = handler.has_active_sequence
+        current, total = self.clipboard_manager.get_position()
+        next_text = self._next_text()
+
+        delimiter = self.clipboard_manager.delimiter
+        paste_mode = self.settings.get('paste_mode', 'paste')
+        after_each = self.settings.get('after_each', 'none')
+        toasts = self.settings.get('toast_enabled', False)
+        sounds = self.settings.get('sounds', True)
+        startup = is_startup_enabled()
+        paused = handler.paused
+
         return pystray.Menu(
-            pystray.MenuItem(
-                f"📋 {status_text}",
-                None,
-                enabled=False
-            ),
-            pystray.MenuItem(
-                f"👁️ {preview_text}",
-                None,
-                enabled=False
-            ),
-            pystray.MenuItem(
-                "🔄 Reset Sequence",
-                self._reset_sequence,
-                enabled=self.clipboard_manager.has_content
-            ),
-            pystray.Menu.SEPARATOR,
-            # Delimiter options - Direct single-click selection with inline examples
-            pystray.MenuItem(
-                "📄 Line  (Line1 ↵ Line2)",
-                self._set_delimiter(DelimiterType.LINE),
-                checked=lambda item: current_delimiter == DelimiterType.LINE,
-                radio=True
-            ),
-            pystray.MenuItem(
-                "🔤 Comma  (apple, banana)",
-                self._set_delimiter(DelimiterType.COMMA),
-                checked=lambda item: current_delimiter == DelimiterType.COMMA,
-                radio=True
-            ),
-            pystray.MenuItem(
-                "📝 Sentence  (Hello. World!)",
-                self._set_delimiter(DelimiterType.SENTENCE),
-                checked=lambda item: current_delimiter == DelimiterType.SENTENCE,
-                radio=True
-            ),
-            pystray.MenuItem(
-                "📃 Paragraph  (Para1 ↵↵ Para2)",
-                self._set_delimiter(DelimiterType.PARAGRAPH),
-                checked=lambda item: current_delimiter == DelimiterType.PARAGRAPH,
-                radio=True
-            ),
-            pystray.Menu.SEPARATOR,
-            # Paste mode options - Direct single-click selection
-            pystray.MenuItem(
-                "📋 Paste Mode  (Fast • Ctrl+V)",
-                self._set_paste_mode('paste'),
-                checked=lambda item: self.settings.get('paste_mode', 'paste') == 'paste',
-                radio=True
-            ),
-            pystray.MenuItem(
-                "⌨️ Type Mode  (Simulate keys)",
-                self._set_paste_mode('type'),
-                checked=lambda item: self.settings.get('paste_mode', 'paste') == 'type',
-                radio=True
-            ),
-            pystray.Menu.SEPARATOR,
-            # Hover side panel for detailed explanations
-            pystray.MenuItem(
-                "💡 Mode Details & Examples",
-                pystray.Menu(
-                    pystray.MenuItem("📄 Line Mode:", None, enabled=False),
-                    pystray.MenuItem("   Splits text by newlines", None, enabled=False),
-                    pystray.MenuItem("   Line 1↵Line 2 ➜ 'Line 1', 'Line 2'", None, enabled=False),
-                    pystray.Menu.SEPARATOR,
-                    pystray.MenuItem("🔤 Comma Mode:", None, enabled=False),
-                    pystray.MenuItem("   Splits text at commas", None, enabled=False),
-                    pystray.MenuItem("   apple, banana ➜ 'apple', 'banana'", None, enabled=False),
-                    pystray.Menu.SEPARATOR,
-                    pystray.MenuItem("📝 Sentence Mode:", None, enabled=False),
-                    pystray.MenuItem("   Splits at . ! ? । 。 ؟", None, enabled=False),
-                    pystray.MenuItem("   Handles Mr., Dr., URLs, decimals", None, enabled=False),
-                    pystray.Menu.SEPARATOR,
-                    pystray.MenuItem("📃 Paragraph Mode:", None, enabled=False),
-                    pystray.MenuItem("   Splits at blank lines", None, enabled=False),
-                    pystray.Menu.SEPARATOR,
-                    pystray.MenuItem("📋 Paste Mode: Fast Ctrl+V paste", None, enabled=False),
-                    pystray.MenuItem("⌨️ Type Mode: Works on blocked fields", None, enabled=False),
-                )
-            ),
-            pystray.MenuItem(
-                "🔔 Toast Notifications",
-                self._toggle_notifications,
-                checked=lambda item: self.settings.get('toast_enabled', False)
-            ),
-            pystray.MenuItem(
-                "🚀 Start with Windows",
-                self._toggle_startup,
-                checked=lambda item: startup_enabled
-            ),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                "⌨️ Shortcuts Guide",
-                pystray.Menu(
-                    pystray.MenuItem("Ctrl+Shift+V  ➜  Paste next segment", None, enabled=False),
-                    pystray.MenuItem("Ctrl+Shift+N  ➜  Skip current segment", None, enabled=False),
-                    pystray.MenuItem("Ctrl+Shift+B  ➜  Go back to previous", None, enabled=False),
-                    pystray.MenuItem("Ctrl+Shift+R  ➜  Reset to start", None, enabled=False),
-                    pystray.MenuItem("Hold Esc  ➜  Cancel typing (Type Mode)", None, enabled=False),
-                )
-            ),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                f"ℹ️ {APP_NAME} v{APP_VERSION}",
-                None,
-                enabled=False
-            ),
-            pystray.MenuItem(
-                "❌ Exit",
-                self._exit_app
-            )
+            Item(self._status_text(), None, enabled=False),
+            Item(next_text or "", None, enabled=False, visible=next_text is not None),
+            SEPARATOR,
+            Item("Skip\tCtrl+Shift+N", lambda icon, item: handler.skip(),
+                 enabled=active and current < total),
+            Item("Back\tCtrl+Shift+B", lambda icon, item: handler.go_back(),
+                 enabled=active and current > 0),
+            Item("Start over\tCtrl+Shift+R", lambda icon, item: handler.reset(),
+                 enabled=active and current > 0),
+            SEPARATOR,
+            Item(f"Split by\t{_short_label(DELIMITER_LABELS, delimiter)}",
+                 self._choice_menu(DELIMITER_LABELS, delimiter, self._set_delimiter)),
+            Item(f"Insert as\t{_short_label(PASTE_MODE_LABELS, paste_mode)}",
+                 self._choice_menu(PASTE_MODE_LABELS, paste_mode,
+                                   lambda v: self._set_setting('paste_mode', v))),
+            Item(f"After each item\t{_short_label(AFTER_EACH_LABELS, after_each)}",
+                 self._choice_menu(AFTER_EACH_LABELS, after_each,
+                                   lambda v: self._set_setting('after_each', v))),
+            SEPARATOR,
+            Item("Notifications", self._toggle_setting('toast_enabled', False),
+                 checked=lambda item: toasts),
+            Item("Sounds", self._toggle_setting('sounds', True),
+                 checked=lambda item: sounds),
+            Item("Start with Windows", self._toggle_startup,
+                 checked=lambda item: startup),
+            SEPARATOR,
+            # Default item: drawn bold, and runs when the tray icon is clicked
+            Item("Pause shortcuts", self._toggle_pause,
+                 checked=lambda item: paused, default=True),
+            Item(f"Quit {APP_NAME}", self._quit),
         )
-    
-    def update_menu(self):
-        """Update the menu to reflect current state"""
-        if self.icon:
+
+    def update(self):
+        """Refresh menu, tooltip and icon to reflect current state (any thread)"""
+        if not self.icon:
+            return
+        with self._update_lock:
             self.icon.menu = self._create_menu()
-            self.icon.title = self._get_status_text()
-    
-    def run(self):
+            self.icon.title = self._tooltip()
+            image = self._current_image()
+            if self.icon.icon is not image:
+                self.icon.icon = image
+
+    def run(self, on_ready: Optional[Callable] = None):
         """Start the tray icon (blocking)"""
         self.icon = pystray.Icon(
             APP_NAME,
-            self._get_icon_image(),
-            self._get_status_text(),
+            self._current_image(),
+            self._tooltip(),
             self._create_menu()
         )
-        self.icon.run()
-    
-    def run_detached(self):
-        """Start the tray icon in a background thread"""
-        thread = threading.Thread(target=self.run, daemon=True)
-        thread.start()
-        return thread
-    
-    def stop(self):
-        """Stop the tray icon"""
-        if self.icon:
-            self.icon.stop()
 
+        def setup(icon):
+            icon.visible = True
+            notification.set_icon(icon)
+            if on_ready:
+                on_ready()
+
+        self.icon.run(setup=setup)

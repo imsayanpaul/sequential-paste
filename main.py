@@ -4,13 +4,12 @@ Main entry point for the application
 """
 import sys
 import ctypes
-import threading
 
 # Import error logger first to capture any startup errors
 import error_logger
 
 from clipboard_manager import ClipboardManager
-from hotkey_handler import HotkeyHandler, set_handler
+from hotkey_handler import HotkeyHandler
 from tray_icon import TrayIcon
 from config import APP_NAME, APP_VERSION
 from settings_manager import get_settings
@@ -60,49 +59,32 @@ def main():
     clipboard_manager.set_delimiter(saved_delimiter)
     
     hotkey_handler = HotkeyHandler(clipboard_manager)
-    tray_icon = TrayIcon(clipboard_manager)
+    tray_icon = TrayIcon(clipboard_manager, hotkey_handler)
     
-    # Set up callbacks for UI updates
-    def update_tray():
-        tray_icon.update_menu()
-    
-    hotkey_handler.set_callbacks(
-        on_position_change=update_tray
-    )
-    
-    # Store global reference
-    set_handler(hotkey_handler)
-    
-    # Set up exit callback
-    running = threading.Event()
-    running.set()
+    # Keep the tray menu, tooltip and icon in sync with the sequence
+    hotkey_handler.set_state_callback(tray_icon.update)
     
     def on_exit():
         print("Shutting down...")
         hotkey_handler.stop()
-        running.clear()
     
     tray_icon.set_exit_callback(on_exit)
     
     # Start hotkey listener
     hotkey_handler.start()
     print("Hotkey listener started")
-    print(f"  - Ctrl+Shift+V: Paste next segment")
-    print(f"  - Ctrl+Shift+N: Skip segment")
-    print(f"  - Ctrl+Shift+B: Go back")
-    print(f"  - Ctrl+Shift+R: Reset sequence")
-    print(f"  - Copy any text to load sequence")
+    print("  - Ctrl+Shift+V: Paste next item")
+    print("  - Ctrl+Shift+N: Skip item")
+    print("  - Ctrl+Shift+B: Go back")
+    print("  - Ctrl+Shift+R: Start over")
+    print("  - Copy a list to load a sequence")
     
-    # Show startup notification
-    notification.show_toast(
-        APP_NAME,
-        "Running in system tray. Copy text to start.",
-        timeout=3
-    )
+    def on_ready():
+        notification.show_toast("Running in the system tray. Copy a list to start.")
     
     # Run tray icon (this blocks until exit)
     try:
-        tray_icon.run()
+        tray_icon.run(on_ready)
     except KeyboardInterrupt:
         on_exit()
     

@@ -1,7 +1,6 @@
 """
 Configuration settings for Sequential Paste Clipboard Utility
 """
-import re
 from enum import Enum
 
 class DelimiterType(Enum):
@@ -9,6 +8,7 @@ class DelimiterType(Enum):
     LINE = "line"
     PARAGRAPH = "paragraph"
     COMMA = "comma"
+    TAB = "tab"
 
 # Common abbreviations that should NOT trigger sentence breaks
 ABBREVIATIONS = [
@@ -20,9 +20,8 @@ ABBREVIATIONS = [
 ]
 
 # Delimiter patterns for splitting text
-# Note: SENTENCE uses a function-based approach for abbreviation handling
+# SENTENCE and TAB are handled specially in clipboard_manager
 DELIMITER_PATTERNS = {
-    DelimiterType.SENTENCE: None,  # Handled specially in clipboard_manager
     DelimiterType.LINE: r'\n',                   # Split on newlines
     DelimiterType.PARAGRAPH: r'\n\s*\n',         # Split on blank lines
     DelimiterType.COMMA: r',',                   # Split on commas
@@ -36,17 +35,17 @@ HOTKEYS = {
     'go_back': 'ctrl+shift+b',
 }
 
-# Notification settings
-NOTIFICATIONS = {
-    'sound_enabled': True,
-    'toast_enabled': True,
-    'show_position': True,  # Show "Pasted 2/3" in notification
-}
-
 # Application settings
 APP_NAME = "Sequential Paste"
 APP_VERSION = "1.0.0"
 DEFAULT_DELIMITER = DelimiterType.LINE
+
+# What to press after each pasted item (setting 'after_each')
+AFTER_EACH_KEYS = {
+    'none': None,
+    'tab': 'tab',
+    'enter': 'enter',
+}
 
 # Sound frequency for completion beep (Hz)
 COMPLETION_SOUND_FREQ = 800

@@ -7,7 +7,7 @@ import threading
 import time
 from typing import Callable, Optional
 from clipboard_manager import ClipboardManager
-from config import HOTKEYS
+from config import HOTKEYS, AFTER_EACH_KEYS
 from settings_manager import get_settings
 import notification
 
@@ -16,6 +16,10 @@ import notification
 # They must be released before we send Ctrl+V or type text, otherwise the
 # target app sees Ctrl+Shift+V / Ctrl+Shift+<char> instead.
 _MODIFIERS = ['ctrl', 'shift', 'left ctrl', 'right ctrl', 'left shift', 'right shift']
+
+# How long apps get to read the clipboard after Ctrl+V before we put the
+# user's own clipboard back. Some apps read it asynchronously.
+CLIPBOARD_RESTORE_DELAY = 0.3
 
 
 def _clipboard_seq_num() -> int:
@@ -32,11 +36,11 @@ class HotkeyHandler:
     def __init__(self, clipboard_manager: ClipboardManager):
         self.clipboard_manager = clipboard_manager
         self.running = False
+        self.paused = False
         self._clipboard_monitor_thread: Optional[threading.Thread] = None
         self._worker_thread: Optional[threading.Thread] = None
         self._actions: "queue.Queue[Optional[Callable]]" = queue.Queue()
-        self._on_delimiter_change: Optional[Callable] = None
-        self._on_position_change: Optional[Callable] = None
+        self._on_state_change: Optional[Callable] = None
         self._last_clipboard_content: str = ""
         self._last_clip_seq_num: int = 0
         # Serializes clipboard checks between the monitor and the worker
@@ -44,20 +48,21 @@ class HotkeyHandler:
         # Set while Type Mode is typing a segment
         self._typing = threading.Event()
 
-    def set_callbacks(self,
-                      on_delimiter_change: Optional[Callable] = None,
-                      on_position_change: Optional[Callable] = None):
-        """Set callback functions for UI updates"""
-        self._on_delimiter_change = on_delimiter_change
-        self._on_position_change = on_position_change
+    def set_state_callback(self, callback: Optional[Callable]):
+        """Called (from any thread) whenever position, content or pause state changes"""
+        self._on_state_change = callback
 
     def _update_position(self):
-        """Trigger position change callback"""
-        if self._on_position_change:
+        """Trigger state change callback"""
+        if self._on_state_change:
             try:
-                self._on_position_change()
+                self._on_state_change()
             except Exception:
-                logging.exception("Position change callback failed")
+                logging.exception("State change callback failed")
+
+    # ------------------------------------------------------------------
+    # Clipboard tracking
+    # ------------------------------------------------------------------
 
     def _sync_clipboard(self) -> bool:
         """
@@ -90,11 +95,18 @@ class HotkeyHandler:
             self.clipboard_manager.load_text(current_clipboard)
 
         count = self.clipboard_manager.total_segments
-        if count > 0:
-            logging.debug("New copy detected (seq #%s), loaded %d segments", seq_num, count)
+        logging.debug("New copy detected (seq #%s), loaded %d segments", seq_num, count)
+        if count > 1:
             notification.notify_sequence_loaded(count)
-            self._update_position()
+        self._update_position()
         return True
+
+    def _set_clipboard(self, text: str):
+        """Write to the clipboard without the monitor mistaking it for a user copy"""
+        with self._clipboard_lock:
+            pyperclip.copy(text)
+            self._last_clipboard_content = text
+            self._last_clip_seq_num = _clipboard_seq_num()
 
     def _clipboard_monitor_loop(self):
         """Background thread that picks up copies made by any method"""
@@ -106,6 +118,63 @@ class HotkeyHandler:
 
             # Poll every 500ms
             time.sleep(0.5)
+
+    # ------------------------------------------------------------------
+    # Hotkey dispatch
+    # ------------------------------------------------------------------
+
+    @property
+    def has_active_sequence(self) -> bool:
+        """True when a copy split into more than one item"""
+        return self.clipboard_manager.total_segments > 1
+
+    def _should_capture(self) -> bool:
+        """
+        Whether our shortcuts should act, or pass through to the focused app
+        (Ctrl+Shift+V is paste-as-plain-text in browsers, Ctrl+Shift+N is a
+        new incognito window, and so on).
+        Runs inside the keyboard hook, so it must be instant: no locks, no I/O.
+        """
+        if self.paused:
+            return False
+        if self.has_active_sequence:
+            return True
+        # A copy the monitor hasn't loaded yet may be a multi-item sequence;
+        # capture and let the worker decide
+        return _clipboard_seq_num() != self._last_clip_seq_num
+
+    def _hotkey_callback(self, action: Callable, hotkey: str) -> Callable:
+        """
+        Wrap an action for keyboard.add_hotkey.
+        With suppress=True the keyboard library calls the callback inside the
+        Windows low-level keyboard hook; slow work there (typing a long
+        segment) makes Windows drop the hook and every hotkey stops working.
+        The callback must return a falsy value so the keys stay suppressed.
+        """
+        def callback():
+            if not self._should_capture():
+                # Hand the shortcut to the focused app. Returning True from
+                # here isn't enough: the library has already swallowed Ctrl
+                # and Shift, so the app would only get a bare "v". Replay the
+                # whole combination instead - outside the hook, since sending
+                # keys from inside it stalls all keyboard input.
+                self._actions.put(lambda: self._replay(hotkey))
+                return None
+            # Ignore Ctrl+Shift+V while a segment is still being typed, so
+            # impatient repeated presses don't queue up a burst of typing
+            if self._typing.is_set() and action == self._on_sequential_paste:
+                return None
+            self._actions.put(action)
+            return None
+        return callback
+
+    def _replay(self, hotkey: str):
+        """Send a shortcut on to the focused app (the hook ignores keys we send)"""
+        keyboard.send(hotkey)
+
+    def _submit(self, action: Callable):
+        """Queue an action from outside the keyboard hook (e.g. the tray menu)"""
+        self._actions.put(action)
 
     def _worker_loop(self):
         """Runs hotkey actions one at a time, outside the keyboard hook"""
@@ -121,21 +190,9 @@ class HotkeyHandler:
             except Exception:
                 logging.exception("Hotkey action failed")
 
-    def _enqueue(self, action: Callable) -> Callable:
-        """
-        Wrap an action for keyboard.add_hotkey.
-        With suppress=True the keyboard library calls the callback inside the
-        Windows low-level keyboard hook; slow work there (typing a long
-        segment) makes Windows drop the hook and every hotkey stops working.
-        The callback must also return a falsy value so the keys stay suppressed.
-        """
-        def callback():
-            # Ignore Ctrl+Shift+V while a segment is still being typed, so
-            # impatient repeated presses don't queue up a burst of typing
-            if self._typing.is_set() and action == self._on_sequential_paste:
-                return
-            self._actions.put(action)
-        return callback
+    # ------------------------------------------------------------------
+    # Output
+    # ------------------------------------------------------------------
 
     def _type_text(self, text: str) -> bool:
         """
@@ -158,6 +215,25 @@ class HotkeyHandler:
         finally:
             self._typing.clear()
 
+    def _paste_text(self, text: str):
+        """Paste via the clipboard, then put the user's clipboard back"""
+        if not text:
+            # Empty spreadsheet cell: nothing to paste
+            return
+        try:
+            original = pyperclip.paste()
+        except Exception:
+            original = ""
+
+        self._set_clipboard(text)
+        keyboard.send('ctrl+v')
+
+        # Only text can be restored; if the clipboard held an image or files,
+        # it keeps the pasted item instead
+        if original and original != text:
+            time.sleep(CLIPBOARD_RESTORE_DELAY)
+            self._set_clipboard(original)
+
     def _release_modifiers(self):
         for key in _MODIFIERS:
             try:
@@ -166,22 +242,12 @@ class HotkeyHandler:
                 pass
         time.sleep(0.05)
 
+    # ------------------------------------------------------------------
+    # Actions
+    # ------------------------------------------------------------------
+
     def _on_sequential_paste(self):
         """Handle Ctrl+Shift+V - Paste next segment"""
-        # Nothing loaded yet (e.g. text was copied before the app started):
-        # load whatever is on the clipboard now
-        if not self.clipboard_manager.has_content:
-            with self._clipboard_lock:
-                current = pyperclip.paste()
-                if current and current.strip():
-                    self.clipboard_manager.load_text(current)
-                    self._last_clipboard_content = current
-                    self._last_clip_seq_num = _clipboard_seq_num()
-            count = self.clipboard_manager.total_segments
-            if count > 0:
-                notification.notify_sequence_loaded(count)
-                self._update_position()
-
         if not self.clipboard_manager.has_content:
             notification.notify_no_content()
             return
@@ -190,35 +256,29 @@ class HotkeyHandler:
         segment = self.clipboard_manager.get_next_segment()
         if segment is None:
             notification.notify_sequence_complete(self.clipboard_manager.total_segments)
+            self._update_position()
             return
 
-        # Check paste mode from settings
         settings = get_settings()
-        paste_mode = settings.get('paste_mode', 'paste')
-
         self._release_modifiers()
 
-        if paste_mode == 'type':
+        if settings.get('paste_mode', 'paste') == 'type':
             # Type mode: simulate keystrokes (works on paste-blocked fields)
             if not self._type_text(segment):
                 # Step back so the cancelled segment can be typed again
                 self.clipboard_manager.go_back()
-                notification.show_toast(notification.APP_NAME, "Typing cancelled", timeout=1)
+                notification.show_toast("Typing cancelled")
                 self._update_position()
                 return
         else:
-            # Paste mode: use clipboard (faster)
-            with self._clipboard_lock:
-                pyperclip.copy(segment)
-                # Track segment & update sequence number to prevent monitor re-triggering
-                self._last_clipboard_content = segment
-                self._last_clip_seq_num = _clipboard_seq_num()
-            keyboard.send('ctrl+v')
+            self._paste_text(segment)
 
-        # Small delay to let action complete
-        time.sleep(0.1)
+        after_key = AFTER_EACH_KEYS.get(settings.get('after_each', 'none'))
+        if after_key:
+            # Give the app a moment to take the paste before moving on
+            time.sleep(0.05)
+            keyboard.send(after_key)
 
-        # Show position notification (respects toast_enabled setting)
         current, total = self.clipboard_manager.get_position()
         notification.notify_paste_position(current, total)
 
@@ -239,17 +299,9 @@ class HotkeyHandler:
         if self.clipboard_manager.skip_segment():
             current, total = self.clipboard_manager.get_position()
             if current >= total:
-                notification.show_toast(
-                    notification.APP_NAME,
-                    "Skipped to end. Sequence complete.",
-                    timeout=2
-                )
+                notification.show_toast("Skipped the last item. Sequence finished.")
             else:
-                notification.show_toast(
-                    notification.APP_NAME,
-                    f"Skipped. Now at {current + 1}/{total}",
-                    timeout=1
-                )
+                notification.show_toast(f"Skipped. Next is {current + 1} of {total}")
             self._update_position()
         else:
             notification.notify_sequence_complete(self.clipboard_manager.total_segments)
@@ -262,18 +314,31 @@ class HotkeyHandler:
 
         if self.clipboard_manager.go_back():
             current, total = self.clipboard_manager.get_position()
-            notification.show_toast(
-                notification.APP_NAME,
-                f"Back to {current + 1}/{total}",
-                timeout=1
-            )
+            notification.show_toast(f"Next is {current + 1} of {total}")
             self._update_position()
         else:
-            notification.show_toast(
-                notification.APP_NAME,
-                "Already at start",
-                timeout=1
-            )
+            notification.show_toast("Already at the first item")
+
+    # Tray menu entry points
+
+    def skip(self):
+        self._submit(self._on_skip)
+
+    def go_back(self):
+        self._submit(self._on_go_back)
+
+    def reset(self):
+        self._submit(self._on_reset)
+
+    def set_paused(self, paused: bool):
+        """Pause or resume the shortcuts; while paused they reach other apps as usual"""
+        self.paused = paused
+        notification.notify_paused(paused)
+        self._update_position()
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
 
     def start(self):
         """Start listening for hotkeys and clipboard changes"""
@@ -282,65 +347,29 @@ class HotkeyHandler:
 
         self.running = True
 
-        # Text already on the clipboard at startup is not auto-loaded; the
-        # first Ctrl+Shift+V picks it up via _sync_clipboard instead
-        try:
-            self._last_clipboard_content = pyperclip.paste() or ""
-        except Exception:
-            self._last_clipboard_content = ""
-
         self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
         self._worker_thread.start()
 
-        # Start clipboard monitor thread (detects ALL copy methods)
+        # Start clipboard monitor thread (detects ALL copy methods). Its first
+        # poll also loads whatever was copied before the app started.
         self._clipboard_monitor_thread = threading.Thread(
             target=self._clipboard_monitor_loop,
             daemon=True
         )
         self._clipboard_monitor_thread.start()
 
-        # Register hotkeys
-        keyboard.add_hotkey(
-            HOTKEYS['sequential_paste'],
-            self._enqueue(self._on_sequential_paste),
-            suppress=True
-        )
-
-        keyboard.add_hotkey(
-            HOTKEYS['reset_sequence'],
-            self._enqueue(self._on_reset),
-            suppress=True
-        )
-
-        keyboard.add_hotkey(
-            HOTKEYS['skip_segment'],
-            self._enqueue(self._on_skip),
-            suppress=True
-        )
-
-        keyboard.add_hotkey(
-            HOTKEYS['go_back'],
-            self._enqueue(self._on_go_back),
-            suppress=True
-        )
+        actions = {
+            'sequential_paste': self._on_sequential_paste,
+            'reset_sequence': self._on_reset,
+            'skip_segment': self._on_skip,
+            'go_back': self._on_go_back,
+        }
+        for name, action in actions.items():
+            keyboard.add_hotkey(HOTKEYS[name], self._hotkey_callback(action, HOTKEYS[name]),
+                                suppress=True)
 
     def stop(self):
         """Stop listening for hotkeys and clipboard monitor"""
         self.running = False
         keyboard.unhook_all_hotkeys()
         self._actions.put(None)
-
-
-# Global instance for easy access
-_handler_instance: Optional[HotkeyHandler] = None
-
-
-def get_handler() -> Optional[HotkeyHandler]:
-    """Get the global hotkey handler instance"""
-    return _handler_instance
-
-
-def set_handler(handler: HotkeyHandler):
-    """Set the global hotkey handler instance"""
-    global _handler_instance
-    _handler_instance = handler

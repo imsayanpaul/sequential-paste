@@ -33,7 +33,6 @@ def build():
     hidden_imports = [
         'pystray._win32',
         'PIL._tkinter_finder',
-        'plyer.platforms.win.notification',
     ]
     
     for imp in hidden_imports:

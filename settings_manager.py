@@ -21,10 +21,9 @@ def get_settings_path() -> str:
 DEFAULT_SETTINGS = {
     'delimiter': 'line',
     'paste_mode': 'paste',  # 'paste' = Ctrl+V, 'type' = simulate keystrokes
-    'sound_enabled': False,
+    'after_each': 'none',   # key pressed after each item: 'none', 'tab' or 'enter'
     'toast_enabled': False,  # Silent by default (no popup notifications on copy/paste)
-    'show_position': False,
-    'startup_with_windows': False,
+    'sounds': True,          # Beep when the sequence is finished or empty
 }
 
 
