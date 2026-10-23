@@ -367,12 +367,11 @@
   .foot-cols a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
   .foot-cols .about p { color: var(--ink-2); font-size: 15px; max-width: 300px; margin: 14px 0 0; }
   .foot-base { display: flex; gap: 16px; justify-content: space-between; flex-wrap: wrap; font: 12.5px/1.4 var(--mono); color: var(--ink-3); padding-bottom: 8px; }
+  /* Solid and quiet: an outline overlaps itself at this letter spacing */
   .giant {
-    font-size: clamp(36px, 13.6vw, 190px); font-weight: 800; letter-spacing: -.06em; line-height: .78; white-space: nowrap;
-    text-align: center; margin: 18px 0 -0.13em; user-select: none; pointer-events: none;
-    color: transparent; -webkit-text-stroke: 1px var(--line-2);
-    background: linear-gradient(to bottom, color-mix(in srgb, var(--ink) 9%, transparent), transparent 85%);
-    -webkit-background-clip: text; background-clip: text;
+    font-size: clamp(34px, 12.4vw, 172px); font-weight: 800; letter-spacing: -.035em; line-height: 1; white-space: nowrap;
+    text-align: center; margin: 28px 0 0; padding-bottom: .12em; user-select: none; pointer-events: none;
+    color: color-mix(in srgb, var(--ink) 7%, var(--paper));
   }
 
   .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s, transform .7s cubic-bezier(.2,.8,.2,1); }
