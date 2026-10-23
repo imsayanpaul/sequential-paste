@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sequential Paste</title>
+<style>
+  :root {
+    --bg: #f3f3f3;
+    --card: #ffffff;
+    --card-hover: #f9f9f9;
+    --text: #1b1b1b;
+    --text-2: #5d5d5d;
+    --text-3: #8a8a8a;
+    --line: #e5e5e5;
+    --line-strong: #d1d1d1;
+    --accent: #2f8f46;
+    --accent-text: #24703a;
+    --accent-soft: #e7f3ea;
+    --key: #f6f6f6;
+    --field: #ffffff;
+    --focus: #2f8f46;
+    --warn-soft: #f4f4f4;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #202020;
+      --card: #2b2b2b;
+      --card-hover: #323232;
+      --text: #f2f2f2;
+      --text-2: #c5c5c5;
+      --text-3: #8f8f8f;
+      --line: #3a3a3a;
+      --line-strong: #4a4a4a;
+      --accent: #5cc274;
+      --accent-text: #7fd394;
+      --accent-soft: #263a2c;
+      --key: #333333;
+      --field: #1f1f1f;
+      --focus: #5cc274;
+      --warn-soft: #333333;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+  button { font: inherit; color: inherit; }
+  .app { display: grid; grid-template-columns: minmax(0, 1fr) 360px; height: 100%; }
+  .main { overflow-y: auto; padding: 24px 24px 32px 28px; }
+  .side { border-left: 1px solid var(--line); background: var(--card); padding: 24px 22px; overflow-y: auto; }
+
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  header h1 { font: 600 20px/1.2 "Segoe UI Variable Display", "Segoe UI", sans-serif; margin: 0; }
+  .pill { font-size: 12px; padding: 2px 10px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); }
+  .pill.paused { background: var(--warn-soft); color: var(--text-2); }
+  header .spacer { flex: 1; }
+
+  h2 { font: 600 13px/1 "Segoe UI", sans-serif; margin: 26px 0 10px; color: var(--text); }
+  .hint { color: var(--text-2); font-size: 13px; margin: -4px 0 10px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+
+  /* Current list */
+  .list-card { padding: 16px; }
+  .list-top { display: flex; align-items: baseline; gap: 10px; }
+  .count { font: 600 22px/1 "Segoe UI Variable Display", "Segoe UI", sans-serif; }
+  .count-sub { color: var(--text-2); }
+  .progress { height: 4px; background: var(--line); border-radius: 2px; margin: 12px 0 14px; overflow: hidden; }
+  .progress > div { height: 100%; background: var(--accent); width: 0; transition: width .25s; }
+  .items { list-style: none; margin: 0; padding: 0; max-height: 164px; overflow-y: auto; border-top: 1px solid var(--line); }
+  .items li { display: grid; grid-template-columns: 34px minmax(0, 1fr); padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  .items li .n { color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .items li .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .items li.done .t { color: var(--text-3); }
+  .items li.next { background: var(--accent-soft); border-radius: 4px; }
+  .items li.next .t { color: var(--accent-text); font-weight: 600; }
+  .items li.next .n { color: var(--accent-text); }
+  .empty-cell { color: var(--text-3); font-style: italic; }
+  .actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .btn { border: 1px solid var(--line-strong); background: var(--card); border-radius: 6px; padding: 5px 12px; cursor: default; }
+  .btn:hover:not(:disabled) { background: var(--card-hover); }
+  .btn:disabled { color: var(--text-3); }
+  .btn kbd { margin-left: 6px; }
+  .empty { padding: 4px 0 2px; }
+  .empty ol { margin: 8px 0 0; padding-left: 20px; color: var(--text-2); }
+  .empty ol li { margin: 3px 0; }
+
+  /* Options */
+  .options { display: grid; gap: 6px; }
+  .opt {
+    display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 10px;
+    padding: 10px 14px; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: var(--card);
+    cursor: default;
+  }
+  .opt:hover { background: var(--card-hover); border-color: var(--line-strong); }
+  .opt.previewing { border-color: var(--line-strong); }
+  .radio { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--text-3); display: grid; place-items: center; }
+  .opt.on .radio { border: 5px solid var(--accent); }
+  .opt .label { font-weight: 600; }
+  .opt .desc { color: var(--text-2); font-size: 13px; }
+  .opt .eg { color: var(--text-3); font-size: 12px; font-family: "Cascadia Mono", Consolas, monospace; white-space: nowrap; }
+
+  /* Toggles */
+  .toggles { padding: 4px 14px; }
+  .toggle-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .toggle-row:last-child { border-bottom: 0; }
+  .toggle-row .text { flex: 1; }
+  .toggle-row .desc { color: var(--text-2); font-size: 13px; }
+  .switch { width: 40px; height: 20px; border-radius: 10px; border: 1px solid var(--text-2); position: relative; background: transparent; flex: none; padding: 0; }
+  .switch::after { content: ""; position: absolute; width: 12px; height: 12px; border-radius: 50%; background: var(--text-2); top: 3px; left: 4px; transition: left .15s; }
+  .switch.on { background: var(--accent); border-color: var(--accent); }
+  .switch.on::after { left: 22px; background: #fff; }
+
+  kbd {
+    font: 12px/1 "Segoe UI", sans-serif; padding: 3px 6px; border: 1px solid var(--line-strong); border-bottom-width: 2px;
+    border-radius: 4px; background: var(--key); color: var(--text); white-space: nowrap; display: inline-block;
+  }
+  .shortcuts { padding: 4px 14px; }
+  .shortcuts div { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .shortcuts div:last-child { border-bottom: 0; }
+
+  /* Demo */
+  .side h3 { font: 600 13px/1 "Segoe UI", sans-serif; margin: 0 0 4px; }
+  .side .sub { color: var(--text-2); font-size: 13px; margin: 0 0 16px; min-height: 38px; }
+  .demo-label { font-size: 12px; color: var(--text-3); margin: 0 0 6px; }
+  .clip {
+    font: 12.5px/1.6 "Cascadia Mono", Consolas, monospace; background: var(--bg); border: 1px solid var(--line);
+    border-radius: 6px; padding: 10px 12px; white-space: pre-wrap; min-height: 74px;
+  }
+  .clip .seg { border-radius: 3px; transition: background .2s, color .2s; }
+  .clip .seg.used { color: var(--text-3); }
+  .clip .seg.now { background: var(--accent-soft); color: var(--accent-text); outline: 1px solid var(--accent); }
+  .clip table { border-collapse: collapse; }
+  .clip td { border: 1px solid var(--line-strong); padding: 2px 6px; }
+  .keys { display: flex; gap: 8px; align-items: center; margin: 16px 0; min-height: 26px; flex-wrap: wrap; }
+  .keys kbd { transition: background .15s, color .15s, border-color .15s, transform .15s; }
+  .keys kbd.press { background: var(--accent); color: #fff; border-color: var(--accent); transform: translateY(1px); }
+  .keys .click { font-size: 12px; color: var(--text-3); transition: color .15s; }
+  .keys .click.press { color: var(--accent-text); }
+  .form { display: grid; gap: 10px; }
+  .field label { display: block; font-size: 12px; color: var(--text-2); margin-bottom: 3px; }
+  .input {
+    background: var(--field); border: 1px solid var(--line-strong); border-bottom: 2px solid var(--line-strong);
+    border-radius: 4px; padding: 5px 8px; min-height: 30px; white-space: pre-wrap; font-size: 13px;
+  }
+  .input.tall { min-height: 92px; }
+  .input.focus { border-bottom-color: var(--focus); }
+  .caret { display: inline-block; width: 1px; height: 15px; background: var(--text); vertical-align: -3px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .side .foot { color: var(--text-3); font-size: 12px; margin-top: 18px; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <main class="main">
+    <header>
+      <h1>Sequential Paste</h1>
+      <span class="pill" id="status-pill">Active</span>
+      <span class="spacer"></span>
+      <button class="btn" id="pause-btn">Pause shortcuts</button>
+    </header>
+
+    <section class="card list-card" id="list-card"></section>
+
+    <h2>Split copied text into</h2>
+    <p class="hint">Hover an option to see what it does.</p>
+    <div class="options" data-kind="split"></div>
+
+    <h2>Insert items by</h2>
+    <div class="options" data-kind="insert"></div>
+
+    <h2>After each item</h2>
+    <div class="options" data-kind="after"></div>
+
+    <h2>General</h2>
+    <div class="card toggles" id="toggles"></div>
+
+    <h2>Shortcuts</h2>
+    <div class="card shortcuts">
+      <div><span>Paste the next item</span><span><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>V</kbd></span></div>
+      <div><span>Skip the next item</span><span><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>N</kbd></span></div>
+      <div><span>Go back one item</span><span><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>B</kbd></span></div>
+      <div><span>Start over</span><span><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>R</kbd></span></div>
+      <div><span>Stop typing (when typing it out)</span><span>hold <kbd>Esc</kbd></span></div>
+    </div>
+    <p class="hint" style="margin-top:10px">The shortcuts only act while a list is loaded. Otherwise, or while paused, they work as usual in your other apps.</p>
+  </main>
+
+  <aside class="side" aria-live="polite">
+    <h3 id="demo-title">How it works</h3>
+    <p class="sub" id="demo-caption"></p>
+    <p class="demo-label">You copied</p>
+    <div class="clip" id="demo-clip"></div>
+    <div class="keys" id="demo-keys"></div>
+    <div class="form" id="demo-form"></div>
+    <p class="foot" id="demo-foot"></p>
+  </aside>
+</div>
+
+<script>
+const OPTIONS = {
+  split: [
+    { value: 'line', label: 'Lines', desc: 'Each line is one item', eg: 'Priya ↵ Bengaluru' },
+    { value: 'comma', label: 'Commas', desc: 'Split at every comma', eg: 'red, green, blue' },
+    { value: 'tab', label: 'Spreadsheet cells', desc: 'Each cell, row by row. Empty cells are kept.', eg: 'Excel, Sheets' },
+    { value: 'sentence', label: 'Sentences', desc: 'Split after . ! ? and other sentence endings', eg: 'Hi. Thanks!' },
+    { value: 'paragraph', label: 'Paragraphs', desc: 'Split at blank lines', eg: 'Para ↵↵ Para' },
+  ],
+  insert: [
+    { value: 'paste', label: 'Pasting', desc: 'Fast and works in most apps. Your clipboard is put back afterwards.' },
+    { value: 'type', label: 'Typing it out', desc: 'Types each character, for fields that block pasting' },
+  ],
+  after: [
+    { value: 'none', label: 'Do nothing', desc: 'You click the next field yourself' },
+    { value: 'tab', label: 'Press Tab', desc: 'Jumps to the next form field, so you can fill a whole form' },
+    { value: 'enter', label: 'Press Enter', desc: 'Starts a new line, or submits the form' },
+  ],
+};
+
+const TOGGLES = [
+  { key: 'notifications', label: 'Show notifications', desc: 'A Windows notification for each paste and when a list loads' },
+  { key: 'sounds', label: 'Beep when a list is finished', desc: 'Also beeps when there is nothing to paste' },
+  { key: 'startup', label: 'Start with Windows', desc: 'Run in the tray when you sign in' },
+];
+
+// ---------------------------------------------------------------- backend
+
+// Inside the app, pywebview provides window.pywebview.api. Opened in a plain
+// browser (for design work) a fake backend is used instead.
+const fakeBackend = (() => {
+  const items = ['Priya Sharma', 'Bengaluru', '98450 12345', 'Arjun Mehta', 'Mysuru', '', '91234 56789'];
+  const s = { paused: false, active: true, current: 3, total: 7, items, split: 'line', insert: 'paste',
+              after: 'tab', notifications: false, sounds: true, startup: true };
+  const state = () => ({ ...s, total: s.items.length, next: s.items[s.current] ?? null });
+  return {
+    get_state: async () => state(),
+    set_option: async (kind, value) => { s[kind] = value; return state(); },
+    set_toggle: async (key, on) => { s[key] = on; return state(); },
+    set_paused: async (on) => { s.paused = on; return state(); },
+    action: async (name) => {
+      if (name === 'skip') s.current = Math.min(s.current + 1, s.items.length);
+      if (name === 'back') s.current = Math.max(s.current - 1, 0);
+      if (name === 'reset') s.current = 0;
+      return state();
+    },
+  };
+})();
+const api = () => (window.pywebview && window.pywebview.api) || fakeBackend;
+
+// ---------------------------------------------------------------- rendering
+
+let state = null;
+
+function esc(text) {
+  return String(text).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function renderList() {
+  const card = document.getElementById('list-card');
+  if (!state.active) {
+    card.innerHTML = `
+      <div class="empty">
+        <div class="count">No list loaded</div>
+        <ol>
+          <li>Copy two or more lines, values or spreadsheet cells.</li>
+          <li>Click where the first item should go.</li>
+          <li>Press <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>V</kbd>. Each press inserts the next item.</li>
+        </ol>
+      </div>`;
+    return;
+  }
+  const { current, total, items } = state;
+  const finished = current >= total;
+  const rows = items.map((t, i) => {
+    const cls = i < current ? 'done' : (i === current ? 'next' : '');
+    const text = t === '' ? '<span class="empty-cell">empty cell</span>' : esc(t);
+    return `<li class="${cls}"><span class="n">${i + 1}</span><span class="t">${text}</span></li>`;
+  }).join('');
+  card.innerHTML = `
+    <div class="list-top">
+      <span class="count">${finished ? 'All pasted' : `${current} of ${total}`}</span>
+      <span class="count-sub">${finished ? `${total} items. Start over to paste them again.` : 'pasted. The highlighted item is next.'}</span>
+    </div>
+    <div class="progress"><div style="width:${total ? (current / total) * 100 : 0}%"></div></div>
+    <ul class="items">${rows}</ul>
+    <div class="actions">
+      <button class="btn" data-action="back" ${current > 0 ? '' : 'disabled'}>Previous item</button>
+      <button class="btn" data-action="skip" ${finished ? 'disabled' : ''}>Skip next item</button>
+      <button class="btn" data-action="reset" ${current > 0 ? '' : 'disabled'}>Start over</button>
+    </div>`;
+  const next = card.querySelector('li.next');
+  if (next) next.scrollIntoView({ block: 'nearest' });
+}
+
+function renderOptions() {
+  document.querySelectorAll('.options').forEach(box => {
+    const kind = box.dataset.kind;
+    box.innerHTML = OPTIONS[kind].map(o => `
+      <button class="opt ${state[kind] === o.value ? 'on' : ''}" data-kind="${kind}" data-value="${o.value}"
+              role="radio" aria-checked="${state[kind] === o.value}">
+        <span class="radio"></span>
+        <span><div class="label">${o.label}</div><div class="desc">${o.desc}</div></span>
+        <span class="eg">${o.eg ? esc(o.eg) : ''}</span>
+      </button>`).join('');
+  });
+}
+
+function renderToggles() {
+  document.getElementById('toggles').innerHTML = TOGGLES.map(t => `
+    <div class="toggle-row">
+      <div class="text"><div>${t.label}</div><div class="desc">${t.desc}</div></div>
+      <button class="switch ${state[t.key] ? 'on' : ''}" data-toggle="${t.key}" role="switch"
+              aria-checked="${!!state[t.key]}" aria-label="${t.label}"></button>
+    </div>`).join('');
+}
+
+function renderHeader() {
+  const pill = document.getElementById('status-pill');
+  pill.textContent = state.paused ? 'Paused' : 'Active';
+  pill.classList.toggle('paused', state.paused);
+  document.getElementById('pause-btn').textContent = state.paused ? 'Resume shortcuts' : 'Pause shortcuts';
+}
+
+function render(newState) {
+  const settingsChanged = !state || ['split', 'insert', 'after'].some(k => state[k] !== newState[k]);
+  state = newState;
+  renderHeader();
+  renderList();
+  renderOptions();
+  renderToggles();
+  if (settingsChanged && !previewing) demo.play(currentConfig());
+}
+window.app = { render };  // Python pushes state changes through this
+
+// ---------------------------------------------------------------- events
+
+document.addEventListener('click', async e => {
+  const opt = e.target.closest('.opt');
+  const toggle = e.target.closest('[data-toggle]');
+  const action = e.target.closest('[data-action]');
+  if (opt) render(await api().set_option(opt.dataset.kind, opt.dataset.value));
+  else if (toggle) render(await api().set_toggle(toggle.dataset.toggle, !state[toggle.dataset.toggle]));
+  else if (action) render(await api().action(action.dataset.action));
+  else if (e.target.id === 'pause-btn') render(await api().set_paused(!state.paused));
+});
+
+let previewing = null;
+document.addEventListener('mouseover', e => {
+  const opt = e.target.closest('.opt');
+  const key = opt ? opt.dataset.kind + ':' + opt.dataset.value : null;
+  if (key === previewing) return;
+  previewing = key;
+  document.querySelectorAll('.opt.previewing').forEach(o => o.classList.remove('previewing'));
+  if (opt) {
+    opt.classList.add('previewing');
+    demo.play({ ...currentConfig(), [opt.dataset.kind]: opt.dataset.value }, opt.dataset.kind);
+  } else {
+    demo.play(currentConfig());
+  }
+});
+
+function currentConfig() {
+  return { split: state.split, insert: state.insert, after: state.after };
+}
+
+// ---------------------------------------------------------------- demo
+
+const SAMPLES = {
+  line:      { items: ['Priya Sharma', 'Bengaluru', '98450 12345'], join: '\n', labels: ['Name', 'City', 'Phone'] },
+  comma:     { items: ['Priya Sharma', 'Bengaluru', '98450 12345'], join: ', ', labels: ['Name', 'City', 'Phone'] },
+  tab:       { items: ['Priya Sharma', 'Bengaluru', '98450 12345'], table: true, labels: ['Name', 'City', 'Phone'] },
+  sentence:  { items: ['Hi Priya.', 'Your order has shipped.', 'It arrives on Friday.'], join: ' ',
+               labels: ['Line 1', 'Line 2', 'Line 3'] },
+  paragraph: { items: ['Hi Priya,', 'Your order has shipped and arrives on Friday.', 'Thanks, Arjun'], join: '\n\n',
+               labels: ['Greeting', 'Message', 'Sign-off'] },
+};
+
+const CAPTIONS = {
+  split: {
+    line: 'Every line you copy becomes its own item.',
+    comma: 'Every comma-separated value becomes its own item.',
+    tab: 'Every spreadsheet cell becomes its own item, row by row.',
+    sentence: 'Every sentence becomes its own item.',
+    paragraph: 'Every paragraph becomes its own item.',
+  },
+  insert: {
+    paste: 'Each press of Ctrl+Shift+V pastes the next item instantly.',
+    type: 'Each press types the next item out, key by key.',
+  },
+  after: {
+    none: 'After each item nothing else happens: you click the next field yourself.',
+    tab: 'After each item it presses Tab, so the next press lands in the next field.',
+    enter: 'After each item it presses Enter, so each item goes on a new line.',
+  },
+};
+
+const TITLES = { split: 'Split copied text into', insert: 'Insert items by', after: 'After each item' };
+
+const demo = (() => {
+  let run = 0;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const $ = id => document.getElementById(id);
+
+  function setup(cfg) {
+    const sample = SAMPLES[cfg.split];
+    const segs = sample.items.map((t, i) => `<span class="seg" data-i="${i}">${esc(t)}</span>`);
+    $('demo-clip').innerHTML = sample.table
+      ? `<table><tr>${segs.map(s => `<td>${s}</td>`).join('')}</tr></table>`
+      : segs.join(esc(sample.join));
+
+    const keys = ['<kbd data-k="v">Ctrl+Shift+V</kbd>'];
+    if (cfg.after === 'tab') keys.push('<kbd data-k="tab">Tab</kbd>');
+    if (cfg.after === 'enter') keys.push('<kbd data-k="enter">Enter</kbd>');
+    if (cfg.after === 'none') keys.push('<span class="click" data-k="click">then you click the next field</span>');
+    $('demo-keys').innerHTML = keys.join('');
+
+    // With Enter every item lands in one multi-line field
+    $('demo-form').innerHTML = cfg.after === 'enter'
+      ? `<div class="field"><label>Message</label><div class="input tall" data-f="0"></div></div>`
+      : sample.labels.map((l, i) => `<div class="field"><label>${l}</label><div class="input" data-f="${i}"></div></div>`).join('');
+    return sample;
+  }
+
+  function focus(index) {
+    document.querySelectorAll('#demo-form .input').forEach(el => {
+      el.classList.toggle('focus', Number(el.dataset.f) === index);
+      el.querySelector('.caret')?.remove();
+    });
+    const el = document.querySelector(`#demo-form .input[data-f="${index}"]`);
+    if (el) el.insertAdjacentHTML('beforeend', '<span class="caret"></span>');
+    return el;
+  }
+
+  async function press(k, me) {
+    const el = document.querySelector(`#demo-keys [data-k="${k}"]`);
+    if (!el) return;
+    el.classList.add('press');
+    await sleep(260);
+    if (me === run) el.classList.remove('press');
+  }
+
+  function write(el, text) {
+    el.querySelector('.caret')?.remove();
+    el.insertAdjacentText('beforeend', text);
+    el.insertAdjacentHTML('beforeend', '<span class="caret"></span>');
+  }
+
+  async function play(cfg, highlight) {
+    const me = ++run;
+    const kind = highlight || null;
+    $('demo-title').textContent = kind ? `${TITLES[kind]}: ${OPTIONS[kind].find(o => o.value === cfg[kind]).label}` : 'How your settings work';
+    $('demo-caption').textContent = kind
+      ? CAPTIONS[kind][cfg[kind]]
+      : `${CAPTIONS.split[cfg.split]} ${CAPTIONS.after[cfg.after]}`;
+    $('demo-foot').textContent = kind ? 'Move the pointer away to see your current settings.' : 'Hover any option on the left to preview it.';
+
+    while (me === run) {
+      const sample = setup(cfg);
+      const multiField = cfg.after !== 'enter';
+      let field = focus(0);
+      await sleep(900);
+      for (let i = 0; i < sample.items.length && me === run; i++) {
+        const seg = document.querySelector(`#demo-clip .seg[data-i="${i}"]`);
+        seg?.classList.add('now');
+        await press('v', me);
+        if (me !== run) return;
+        const text = sample.items[i];
+        if (cfg.insert === 'type') {
+          for (const ch of text) { if (me !== run) return; write(field, ch); await sleep(45); }
+        } else {
+          write(field, text);
+        }
+        await sleep(350);
+        if (me !== run) return;
+        seg?.classList.replace('now', 'used');
+        const last = i === sample.items.length - 1;
+        if (cfg.after === 'tab') {
+          await press('tab', me);
+          if (me !== run) return;
+          if (!last) field = focus(i + 1);
+        } else if (cfg.after === 'enter') {
+          await press('enter', me);
+          if (me !== run) return;
+          if (!last) write(field, '\n');
+        } else if (!last) {
+          await sleep(300);
+          await press('click', me);
+          if (me !== run) return;
+          field = focus(i + 1);
+        }
+        await sleep(650);
+      }
+      await sleep(1800);
+    }
+  }
+
+  return { play };
+})();
+
+// ---------------------------------------------------------------- start
+
+async function start() { render(await api().get_state()); }
+// The app loads this page with <html data-app> and it must wait for its
+// backend; opened any other way, fall back to the fake backend
+const inApp = document.documentElement.hasAttribute('data-app');
+if (window.pywebview && window.pywebview.api && window.pywebview.api.get_state) start();
+else if (inApp) window.addEventListener('pywebviewready', start, { once: true });
+else start();
+</script>
+</body>
+</html>

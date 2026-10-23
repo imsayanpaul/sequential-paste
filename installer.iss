@@ -108,7 +108,7 @@ begin
            '  Ctrl+Shift+N - Skip an item' + #13#10 +
            '  Ctrl+Shift+B - Go back' + #13#10 +
            '  Ctrl+Shift+R - Start over' + #13#10 + #13#10 +
-           'Click the tray icon to pause the shortcuts.',
+           'Click the tray icon to open the app and see what each setting does.',
            mbInformation, MB_OK, IDOK);
   end;
 end;

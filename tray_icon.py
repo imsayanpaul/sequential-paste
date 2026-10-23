@@ -50,7 +50,7 @@ HELP_TEXT = (
     "pressing Ctrl+Shift+V to fill one field after another.\n"
     "\n"
     "When no list is loaded, or the shortcuts are paused, the shortcuts "
-    "work as normal in other apps. Click the tray icon to pause."
+    "work as normal in other apps. Use Pause shortcuts in the tray menu to pause."
 )
 
 PREVIEW_LENGTH = 32
@@ -80,10 +80,26 @@ class TrayIcon:
         self.hotkey_handler = hotkey_handler
         self.icon: Optional[pystray.Icon] = None
         self._on_exit: Optional[Callable] = None
+        self._on_change: Optional[Callable] = None
+        self._open_window: Optional[Callable] = None
         self.settings = get_settings()
         self._images = self._build_images()
         self._update_lock = threading.Lock()
 
+    def set_change_callback(self, callback: Callable):
+        """Called after a menu change, to refresh everything that shows state"""
+        self._on_change = callback
+    
+    def set_window_opener(self, callback: Optional[Callable]):
+        """Opens the app window; None if the window isn't available"""
+        self._open_window = callback
+    
+    def _changed(self):
+        if self._on_change:
+            self._on_change()
+        else:
+            self.update()
+    
     def set_exit_callback(self, callback: Callable):
         """Set callback for when user clicks Quit"""
         self._on_exit = callback
@@ -176,30 +192,36 @@ class TrayIcon:
         def action(icon, item):
             self.clipboard_manager.set_delimiter(delimiter)
             self.settings.set_delimiter(delimiter)
-            self.update()
+            self._changed()
         return action
 
     def _set_setting(self, key: str, value):
         def action(icon, item):
             self.settings.set(key, value)
-            self.update()
+            self._changed()
         return action
 
     def _toggle_setting(self, key: str, default: bool):
         def action(icon, item):
             self.settings.set(key, not self.settings.get(key, default))
-            self.update()
+            self._changed()
         return action
 
     def _toggle_startup(self, icon, item):
         set_startup_with_windows(not is_startup_enabled())
-        self.update()
+        self._changed()
 
     def _toggle_pause(self, icon, item):
         self.hotkey_handler.set_paused(not self.hotkey_handler.paused)
 
+    def _open(self, icon, item):
+        if self._open_window:
+            self._open_window()
+        else:
+            self._show_help(icon, item)
+    
     def _show_help(self, icon, item):
-        # A message box blocks, so keep it off the tray's message loop
+        # Fallback when the app window isn't available. A message box blocks, so keep it off the tray's message loop
         def show():
             MB_ICONINFORMATION = 0x40
             ctypes.windll.user32.MessageBoxW(None, HELP_TEXT, f"How to use {APP_NAME}",
@@ -238,6 +260,10 @@ class TrayIcon:
         paused = handler.paused
 
         return pystray.Menu(
+            # Default item: drawn bold, and runs when the tray icon is clicked
+            Item(f"Open {APP_NAME}…" if self._open_window else "How to use…", self._open,
+                 default=True),
+            SEPARATOR,
             Item(self._status_text(), None, enabled=False),
             Item(next_text or "Copy two or more lines, then press Ctrl+Shift+V",
                  None, enabled=False, visible=next_text is not None or not active),
@@ -265,10 +291,8 @@ class TrayIcon:
             Item("Start with Windows", self._toggle_startup,
                  checked=lambda item: startup),
             SEPARATOR,
-            # Default item: drawn bold, and runs when the tray icon is clicked
             Item("Pause shortcuts", self._toggle_pause,
-                 checked=lambda item: paused, default=True),
-            Item("How to use…", self._show_help),
+                 checked=lambda item: paused),
             Item(f"Quit {APP_NAME}", self._quit),
         )
 
