@@ -25,7 +25,7 @@
 Set **After each item** to **Press Tab** and you can fill a whole form by pressing `Ctrl+Shift+V` repeatedly, since each paste moves on to the next field.
 
 <p align="center">
-  <img src="assets/image.png" alt="The Sequential Paste tray menu" width="278">
+  <img src="assets/image.png" alt="The Sequential Paste tray menu" width="312">
 </p>
 
 ## Shortcuts
@@ -36,7 +36,7 @@ Set **After each item** to **Press Tab** and you can fill a whole form by pressi
 | `Ctrl+Shift+N` | Skip the next item |
 | `Ctrl+Shift+B` | Go back one item |
 | `Ctrl+Shift+R` | Start over from the first item |
-| Hold `Esc` | Stop typing (when inserting as typed keystrokes) |
+| Hold `Esc` | Stop typing (when inserting by typing it out) |
 
 These shortcuts only act while a list is loaded. When the clipboard holds a single item, or the shortcuts are paused, they reach the app you're using as normal, so `Ctrl+Shift+V` still pastes plain text in your browser and `Ctrl+Shift+N` still opens a private window.
 
@@ -46,26 +46,28 @@ Click the tray icon to pause or resume the shortcuts. The icon turns grey while 
 
 Everything is in the tray menu (right-click the icon).
 
-**Split by**
+**Split copied text into**
 
 | Option | Input | Items |
 |--------|-------|-------|
 | Lines | `Line 1` ↵ `Line 2` | `Line 1`, `Line 2` |
 | Commas | `apple, banana` | `apple`, `banana` |
-| Tabs (spreadsheet cells) | A copied range of cells | Each cell, row by row. Empty cells are kept so fields stay lined up. |
+| Spreadsheet cells | A copied range of cells | Each cell, row by row. Empty cells are kept so fields stay lined up. |
 | Sentences | `Hello. How are you?` | `Hello.`, `How are you?` |
 | Paragraphs | Text separated by blank lines | One item per paragraph |
 
 Sentence splitting understands abbreviations (Mr., Dr., e.g.), decimals, URLs, email addresses and ellipses, and also splits on Hindi (।), Chinese and Japanese (。！？) and Arabic (؟) sentence endings.
 
-**Insert as**
+**Insert items by**
 
-- **Paste (Ctrl+V)**: fast, and works almost everywhere. Your clipboard is put back after each paste.
-- **Typed keystrokes**: types the text character by character. Use this for fields that block pasting.
+- **Pasting**: fast, and works almost everywhere. Your clipboard is put back after each paste.
+- **Typing it out**: types the text character by character. Use this for fields that block pasting.
 
-**After each item**: do nothing, press Tab (move to the next field), or press Enter.
+**After each item**: do nothing, press Tab (jump to the next form field), or press Enter.
 
-**Notifications**, **Sounds** and **Start with Windows** can be switched on and off. Notifications are off by default. Sounds are a short beep when the list is finished.
+**Show notifications**, **Beep when a list is finished** and **Start with Windows** can be switched on and off. Notifications are off by default.
+
+**How to use…** in the menu shows a short guide.
 
 ## Install
 

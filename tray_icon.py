@@ -1,6 +1,7 @@
 """
 System Tray Icon - Background application interface
 """
+import ctypes
 import os
 import threading
 import pystray
@@ -16,24 +17,41 @@ import notification
 Item = pystray.MenuItem
 SEPARATOR = pystray.Menu.SEPARATOR
 
-DELIMITER_LABELS = [
-    (DelimiterType.LINE, "Lines"),
-    (DelimiterType.COMMA, "Commas"),
-    (DelimiterType.TAB, "Tabs (spreadsheet cells)"),
-    (DelimiterType.SENTENCE, "Sentences"),
-    (DelimiterType.PARAGRAPH, "Paragraphs"),
+# (value, label, what it does) - the description is shown beside each choice
+DELIMITER_CHOICES = [
+    (DelimiterType.LINE, "Lines", "each line is one item"),
+    (DelimiterType.COMMA, "Commas", "red, green, blue  →  3 items"),
+    (DelimiterType.TAB, "Spreadsheet cells", "each cell, row by row"),
+    (DelimiterType.SENTENCE, "Sentences", "each sentence is one item"),
+    (DelimiterType.PARAGRAPH, "Paragraphs", "split at blank lines"),
 ]
 
-PASTE_MODE_LABELS = [
-    ('paste', "Paste (Ctrl+V)"),
-    ('type', "Typed keystrokes"),
+PASTE_MODE_CHOICES = [
+    ('paste', "Pasting", "fast, works in most apps"),
+    ('type', "Typing it out", "for fields that block pasting"),
 ]
 
-AFTER_EACH_LABELS = [
-    ('none', "Nothing"),
-    ('tab', "Press Tab"),
-    ('enter', "Press Enter"),
+AFTER_EACH_CHOICES = [
+    ('none', "Do nothing", "stay in the same field"),
+    ('tab', "Press Tab", "jump to the next form field"),
+    ('enter', "Press Enter", "new line, or submit"),
 ]
+
+HELP_TEXT = (
+    "1. Copy a list: several lines, comma-separated values, "
+    "or cells from a spreadsheet.\n"
+    "2. Click where the first item should go.\n"
+    "3. Press Ctrl+Shift+V. Each press inserts the next item.\n"
+    "\n"
+    "Ctrl+Shift+N skips an item, Ctrl+Shift+B goes back one, "
+    "Ctrl+Shift+R starts over.\n"
+    "\n"
+    "Filling in a form? Set \"After each item\" to \"Press Tab\" and keep "
+    "pressing Ctrl+Shift+V to fill one field after another.\n"
+    "\n"
+    "When no list is loaded, or the shortcuts are paused, the shortcuts "
+    "work as normal in other apps. Click the tray icon to pause."
+)
 
 PREVIEW_LENGTH = 32
 
@@ -46,11 +64,11 @@ def _escape(text: str) -> str:
     return text.replace('&', '&&')
 
 
-def _short_label(labels, value) -> str:
-    """Current choice shown next to a submenu, e.g. 'Split by    Lines'"""
-    for key, label in labels:
+def _current_label(choices, value) -> str:
+    """Current choice shown next to a submenu, e.g. 'Split copied text into    Lines'"""
+    for key, label, _ in choices:
         if key == value:
-            return label.split(' (')[0]
+            return label
     return ''
 
 
@@ -125,7 +143,7 @@ class TrayIcon:
         if self.hotkey_handler.paused:
             return "Shortcuts paused"
         if not self.hotkey_handler.has_active_sequence:
-            return "Copy a list to start"
+            return "No list loaded"
         current, total = self.clipboard_manager.get_position()
         if current >= total:
             return f"All {total} items pasted"
@@ -144,7 +162,7 @@ class TrayIcon:
             if len(preview) > PREVIEW_LENGTH:
                 preview = preview[:PREVIEW_LENGTH - 1].rstrip() + "…"
             preview = f"“{preview}”"
-        return _escape(f"Next: {preview}") + "\tCtrl+Shift+V"
+        return _escape(f"Paste next: {preview}") + "\tCtrl+Shift+V"
 
     def _tooltip(self) -> str:
         # Windows truncates tray tooltips at 127 characters
@@ -180,6 +198,14 @@ class TrayIcon:
     def _toggle_pause(self, icon, item):
         self.hotkey_handler.set_paused(not self.hotkey_handler.paused)
 
+    def _show_help(self, icon, item):
+        # A message box blocks, so keep it off the tray's message loop
+        def show():
+            MB_ICONINFORMATION = 0x40
+            ctypes.windll.user32.MessageBoxW(None, HELP_TEXT, f"How to use {APP_NAME}",
+                                             MB_ICONINFORMATION)
+        threading.Thread(target=show, daemon=True).start()
+
     def _quit(self, icon, item):
         if self._on_exit:
             self._on_exit()
@@ -191,8 +217,9 @@ class TrayIcon:
 
     def _choice_menu(self, choices, current, make_action) -> pystray.Menu:
         return pystray.Menu(*[
-            Item(label, make_action(value), checked=lambda item, v=value: v == current, radio=True)
-            for value, label in choices
+            Item(f"{label}\t{hint}", make_action(value),
+                 checked=lambda item, v=value: v == current, radio=True)
+            for value, label, hint in choices
         ])
 
     def _create_menu(self) -> pystray.Menu:
@@ -212,27 +239,28 @@ class TrayIcon:
 
         return pystray.Menu(
             Item(self._status_text(), None, enabled=False),
-            Item(next_text or "", None, enabled=False, visible=next_text is not None),
+            Item(next_text or "Copy two or more lines, then press Ctrl+Shift+V",
+                 None, enabled=False, visible=next_text is not None or not active),
             SEPARATOR,
-            Item("Skip\tCtrl+Shift+N", lambda icon, item: handler.skip(),
+            Item("Skip next item\tCtrl+Shift+N", lambda icon, item: handler.skip(),
                  enabled=active and current < total),
-            Item("Back\tCtrl+Shift+B", lambda icon, item: handler.go_back(),
+            Item("Previous item\tCtrl+Shift+B", lambda icon, item: handler.go_back(),
                  enabled=active and current > 0),
             Item("Start over\tCtrl+Shift+R", lambda icon, item: handler.reset(),
                  enabled=active and current > 0),
             SEPARATOR,
-            Item(f"Split by\t{_short_label(DELIMITER_LABELS, delimiter)}",
-                 self._choice_menu(DELIMITER_LABELS, delimiter, self._set_delimiter)),
-            Item(f"Insert as\t{_short_label(PASTE_MODE_LABELS, paste_mode)}",
-                 self._choice_menu(PASTE_MODE_LABELS, paste_mode,
+            Item(f"Split copied text into\t{_current_label(DELIMITER_CHOICES, delimiter)}",
+                 self._choice_menu(DELIMITER_CHOICES, delimiter, self._set_delimiter)),
+            Item(f"Insert items by\t{_current_label(PASTE_MODE_CHOICES, paste_mode)}",
+                 self._choice_menu(PASTE_MODE_CHOICES, paste_mode,
                                    lambda v: self._set_setting('paste_mode', v))),
-            Item(f"After each item\t{_short_label(AFTER_EACH_LABELS, after_each)}",
-                 self._choice_menu(AFTER_EACH_LABELS, after_each,
+            Item(f"After each item\t{_current_label(AFTER_EACH_CHOICES, after_each)}",
+                 self._choice_menu(AFTER_EACH_CHOICES, after_each,
                                    lambda v: self._set_setting('after_each', v))),
             SEPARATOR,
-            Item("Notifications", self._toggle_setting('toast_enabled', False),
+            Item("Show notifications", self._toggle_setting('toast_enabled', False),
                  checked=lambda item: toasts),
-            Item("Sounds", self._toggle_setting('sounds', True),
+            Item("Beep when a list is finished", self._toggle_setting('sounds', True),
                  checked=lambda item: sounds),
             Item("Start with Windows", self._toggle_startup,
                  checked=lambda item: startup),
@@ -240,6 +268,7 @@ class TrayIcon:
             # Default item: drawn bold, and runs when the tray icon is clicked
             Item("Pause shortcuts", self._toggle_pause,
                  checked=lambda item: paused, default=True),
+            Item("How to use…", self._show_help),
             Item(f"Quit {APP_NAME}", self._quit),
         )
 
