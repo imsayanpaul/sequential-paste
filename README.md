@@ -10,6 +10,8 @@
 </p>
 
 <p align="center">
+  <a href="https://sequential-paste.vercel.app"><b>Website and live demo</b></a>
+  &nbsp;·&nbsp;
   <a href="https://github.com/imsayanpaul/sequential-paste/raw/main/installer/SequentialPaste_Setup_v1.0.0.exe"><b>Download the installer</b></a>
   &nbsp;·&nbsp;
   <a href="https://github.com/imsayanpaul/sequential-paste/raw/main/dist/SequentialPaste.exe">Portable exe</a>
