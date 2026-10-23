@@ -1,32 +1,72 @@
 <p align="center">
-  <img src="assets/icon.ico" alt="Sequential Paste" width="96" height="96">
+  <img src="assets/icon.ico" alt="" width="88" height="88">
 </p>
 
 <h1 align="center">Sequential Paste</h1>
 
 <p align="center">
   Copy a list once, then paste it one item at a time.<br>
-  A small Windows tray utility for filling in forms, spreadsheets and anything else that wants one value per field.
+  A small Windows utility for filling in forms, spreadsheets and anything else that wants one value per field.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-blue" alt="Platform">
-  <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License">
+  <a href="https://github.com/imsayanpaul/sequential-paste/raw/main/installer/SequentialPaste_Setup_v1.0.0.exe"><b>Download the installer</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/imsayanpaul/sequential-paste/raw/main/dist/SequentialPaste.exe">Portable exe</a>
+  &nbsp;·&nbsp;
+  Windows 10 and 11
+  &nbsp;·&nbsp;
+  MIT license
+</p>
+
+<p align="center">
+  <img src="assets/readme/hover-preview.gif" alt="Hovering options in the app window plays a preview of what each one does" width="737">
 </p>
 
 ---
 
+## The problem
+
+You have a list of 30 names, or a row of cells from a spreadsheet, and each value has to go into its own field. Normally that means switching windows and copying every value separately.
+
+With Sequential Paste you copy the whole list once. Every press of `Ctrl+Shift+V` pastes the next item.
+
 ## How it works
 
-1. Copy a list: lines of text, comma-separated values, or cells from Excel or Google Sheets.
-2. Click into the first field and press `Ctrl+Shift+V`. The first item is pasted.
-3. Press `Ctrl+Shift+V` again for the second item, and so on.
+1. **Copy a list**: several lines, comma-separated values, or cells from Excel or Google Sheets.
+2. **Click** where the first item should go.
+3. **Press `Ctrl+Shift+V`**. The first item is pasted. Press it again for the second, and so on.
 
-Set **After each item** to **Press Tab** and you can fill a whole form by pressing `Ctrl+Shift+V` repeatedly, since each paste moves on to the next field.
+Filling in a form? Set **After each item** to **Press Tab**. Each paste then moves on to the next field, so you can fill the whole form by pressing `Ctrl+Shift+V` over and over.
 
-<p align="center">
-  <img src="assets/image.png" alt="The Sequential Paste tray menu" width="312">
-</p>
+## The app window
+
+Click the tray icon to open it. It shows the list you copied, with what's already pasted and what's next, and every setting with a short explanation. Hover any option and the preview on the right acts it out on a sample list and form, as in the animation above.
+
+<table>
+  <tr>
+    <td><img src="assets/readme/window-light.png" alt="App window in light mode, 3 of 7 items pasted"></td>
+    <td><img src="assets/readme/window-dark.png" alt="App window in dark mode, previewing the spreadsheet cells option"></td>
+  </tr>
+</table>
+
+It follows the Windows light or dark theme, opens once on first run, and closing it keeps the app running in the tray.
+
+## The tray menu
+
+<img align="right" src="assets/readme/tray-menu.png" alt="Tray menu: status, next item, navigation, settings" width="290">
+
+Everything is also one right-click away:
+
+- what's been pasted and the next item
+- skip, go back or start over
+- the three settings, with the current choice shown
+- notifications, the end-of-list beep, Start with Windows
+- pause the shortcuts
+
+The tray icon turns grey while paused and shows a check mark once every item has been pasted.
+
+<br clear="right">
 
 ## Shortcuts
 
@@ -35,84 +75,66 @@ Set **After each item** to **Press Tab** and you can fill a whole form by pressi
 | `Ctrl+Shift+V` | Paste the next item |
 | `Ctrl+Shift+N` | Skip the next item |
 | `Ctrl+Shift+B` | Go back one item |
-| `Ctrl+Shift+R` | Start over from the first item |
-| Hold `Esc` | Stop typing (when inserting by typing it out) |
+| `Ctrl+Shift+R` | Start over |
+| Hold `Esc` | Stop typing (when typing it out) |
 
-These shortcuts only act while a list is loaded. When the clipboard holds a single item, or the shortcuts are paused, they reach the app you're using as normal, so `Ctrl+Shift+V` still pastes plain text in your browser and `Ctrl+Shift+N` still opens a private window.
-
-Use **Pause shortcuts** in the tray menu or the app window to switch them off for a while. The tray icon turns grey while paused, and shows a check mark once every item has been pasted.
-
-## The app window
-
-Click the tray icon to open the app window. It shows:
-
-- the current list, with the items already pasted and the one that's next, plus buttons to skip, go back or start over
-- every setting, with a short explanation
-- a live preview: hover any option and an animation shows exactly what it does, using a sample list and form
-
-<p align="center">
-  <img src="assets/window.png" alt="The Sequential Paste app window" width="700">
-</p>
-
-The window opens by itself the first time you run the app. Closing it keeps the app running in the tray. It needs the Microsoft Edge WebView2 runtime, which comes with Windows 11 and current Windows 10; without it the app runs from the tray menu alone.
+The shortcuts only act while a list is loaded. When the clipboard holds a single item, or the shortcuts are paused, they go to the app you're using as normal, so `Ctrl+Shift+V` still pastes plain text in your browser and `Ctrl+Shift+N` still opens a private window.
 
 ## Settings
 
-Every setting is in both the app window and the tray menu (right-click the icon).
-
 **Split copied text into**
 
-| Option | Input | Items |
-|--------|-------|-------|
-| Lines | `Line 1` ↵ `Line 2` | `Line 1`, `Line 2` |
-| Commas | `apple, banana` | `apple`, `banana` |
-| Spreadsheet cells | A copied range of cells | Each cell, row by row. Empty cells are kept so fields stay lined up. |
-| Sentences | `Hello. How are you?` | `Hello.`, `How are you?` |
+| Option | You copy | Items |
+|--------|----------|-------|
+| Lines | `Priya Sharma` ↵ `Bengaluru` | `Priya Sharma`, `Bengaluru` |
+| Commas | `red, green, blue` | `red`, `green`, `blue` |
+| Spreadsheet cells | A range of cells | Each cell, row by row. Empty cells are kept so fields stay lined up. |
+| Sentences | `Hi Priya. Your order shipped.` | `Hi Priya.`, `Your order shipped.` |
 | Paragraphs | Text separated by blank lines | One item per paragraph |
 
 Sentence splitting understands abbreviations (Mr., Dr., e.g.), decimals, URLs, email addresses and ellipses, and also splits on Hindi (।), Chinese and Japanese (。！？) and Arabic (؟) sentence endings.
 
 **Insert items by**
 
-- **Pasting**: fast, and works almost everywhere. Your clipboard is put back after each paste.
-- **Typing it out**: types the text character by character. Use this for fields that block pasting.
+- **Pasting**: fast, and works in most apps. Your own clipboard is put back after each paste.
+- **Typing it out**: types each character, for fields that block pasting.
 
-**After each item**: do nothing, press Tab (jump to the next form field), or press Enter.
-
-**Show notifications**, **Beep when a list is finished** and **Start with Windows** can be switched on and off. Notifications are off by default.
-
+**After each item**: do nothing, press Tab to jump to the next field, or press Enter for a new line.
 
 ## Install
 
-- **Installer**: download `SequentialPaste_Setup_v1.0.0.exe` from [Releases](../../releases).
-- **Portable**: download `SequentialPaste.exe` from [Releases](../../releases) and run it.
-- **From source** (Python 3.10+):
+- **Installer**: [SequentialPaste_Setup_v1.0.0.exe](https://github.com/imsayanpaul/sequential-paste/raw/main/installer/SequentialPaste_Setup_v1.0.0.exe). Installs for your user account, with an option to start with Windows.
+- **Portable**: [SequentialPaste.exe](https://github.com/imsayanpaul/sequential-paste/raw/main/dist/SequentialPaste.exe). No installation; run it from anywhere.
 
-  ```bash
-  git clone https://github.com/imsayanpaul/sequential-paste.git
-  cd sequential-paste
-  pip install -r requirements.txt
-  python main.py
-  ```
+The app window uses the Microsoft Edge WebView2 runtime, which comes with Windows 11 and current Windows 10. Without it, everything still works from the tray menu.
 
 Settings are stored in `%APPDATA%\Sequential Paste\settings.json`, and errors are logged to `error.log` in the same folder.
 
-## Development
+## Run from source
+
+Requires Python 3.10 or newer.
+
+```bash
+git clone https://github.com/imsayanpaul/sequential-paste.git
+cd sequential-paste
+pip install -r requirements.txt
+python main.py
+```
 
 ```bash
 python -m unittest discover -s tests   # run the tests
 python build.py                        # build dist/SequentialPaste.exe
 ```
 
-The installer is built from `installer.iss` with [Inno Setup](https://jrsoftware.org/isinfo.php).
+The installer is built from `installer.iss` with [Inno Setup](https://jrsoftware.org/isinfo.php). To work on the app window's page, open `ui/index.html` in a browser: without the app it runs on built-in sample data.
 
 | File | Purpose |
 |------|---------|
-| `main.py` | Entry point and single-instance check |
-| `clipboard_manager.py` | Splitting text into items and tracking the position |
+| `main.py` | Entry point, single-instance check, starts the tray and window |
+| `clipboard_manager.py` | Splits text into items and tracks the position |
 | `hotkey_handler.py` | Global shortcuts, clipboard monitoring, pasting and typing |
 | `tray_icon.py` | Tray icon and menu |
-| `app_window.py`, `ui/index.html` | App window with the live previews (pywebview) |
+| `app_window.py`, `ui/index.html` | App window and its previews (pywebview) |
 | `notification.py` | Notifications and sounds |
 | `settings_manager.py` | Settings file and the Start with Windows entry |
 | `error_logger.py` | Error log |
