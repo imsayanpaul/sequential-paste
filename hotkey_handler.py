@@ -1,4 +1,6 @@
 import ctypes
+import logging
+import queue
 import keyboard
 import pyperclip
 import threading
@@ -10,175 +12,204 @@ from settings_manager import get_settings
 import notification
 
 
+# Modifiers the user is still physically holding when a hotkey fires.
+# They must be released before we send Ctrl+V or type text, otherwise the
+# target app sees Ctrl+Shift+V / Ctrl+Shift+<char> instead.
+_MODIFIERS = ['ctrl', 'shift', 'left ctrl', 'right ctrl', 'left shift', 'right shift']
+
+
+def _clipboard_seq_num() -> int:
+    """Windows clipboard sequence number (changes on every clipboard write)"""
+    try:
+        return ctypes.windll.user32.GetClipboardSequenceNumber()
+    except Exception:
+        return 0
+
+
 class HotkeyHandler:
     """Manages global hotkeys for sequential paste functionality"""
-    
+
     def __init__(self, clipboard_manager: ClipboardManager):
         self.clipboard_manager = clipboard_manager
         self.running = False
         self._clipboard_monitor_thread: Optional[threading.Thread] = None
+        self._worker_thread: Optional[threading.Thread] = None
+        self._actions: "queue.Queue[Optional[Callable]]" = queue.Queue()
         self._on_delimiter_change: Optional[Callable] = None
         self._on_position_change: Optional[Callable] = None
         self._last_clipboard_content: str = ""
         self._last_clip_seq_num: int = 0
-        self._is_pasting: bool = False  # Guard to prevent monitor interference
-    
-    def set_callbacks(self, 
+        # Serializes clipboard checks between the monitor and the worker
+        self._clipboard_lock = threading.Lock()
+
+    def set_callbacks(self,
                       on_delimiter_change: Optional[Callable] = None,
                       on_position_change: Optional[Callable] = None):
         """Set callback functions for UI updates"""
         self._on_delimiter_change = on_delimiter_change
         self._on_position_change = on_position_change
-    
+
     def _update_position(self):
         """Trigger position change callback"""
         if self._on_position_change:
             try:
                 self._on_position_change()
             except Exception:
-                pass
-    
+                logging.exception("Position change callback failed")
+
+    def _sync_clipboard(self) -> bool:
+        """
+        Load the clipboard into the sequence if the user copied something new.
+        Uses Windows GetClipboardSequenceNumber to detect genuine copy actions.
+        Returns True if a new sequence was loaded.
+        """
+        with self._clipboard_lock:
+            seq_num = _clipboard_seq_num()
+
+            # If system sequence number hasn't changed, user has NOT performed a new copy
+            if seq_num > 0 and seq_num == self._last_clip_seq_num:
+                return False
+
+            current_clipboard = pyperclip.paste()
+            # Remember this sequence number so we don't re-read the clipboard
+            # every poll for content we've already decided to ignore
+            self._last_clip_seq_num = seq_num
+
+            if not current_clipboard or not current_clipboard.strip():
+                return False
+
+            # Skip if clipboard matches the single segment we JUST copied in Paste Mode
+            if (current_clipboard == self._last_clipboard_content and
+                current_clipboard != self.clipboard_manager.current_content):
+                return False
+
+            # Genuine new copy operation detected!
+            self._last_clipboard_content = current_clipboard
+            self.clipboard_manager.load_text(current_clipboard)
+
+        count = self.clipboard_manager.total_segments
+        if count > 0:
+            logging.debug("New copy detected (seq #%s), loaded %d segments", seq_num, count)
+            notification.notify_sequence_loaded(count)
+            self._update_position()
+        return True
+
     def _clipboard_monitor_loop(self):
-        """
-        Background thread that monitors clipboard for ANY changes using
-        Windows GetClipboardSequenceNumber to detect genuine user copy actions.
-        """
+        """Background thread that picks up copies made by any method"""
         while self.running:
             try:
-                # Skip monitoring while we're pasting (to avoid false detections)
-                if self._is_pasting:
-                    time.sleep(0.5)
-                    continue
-                
-                try:
-                    seq_num = ctypes.windll.user32.GetClipboardSequenceNumber()
-                except Exception:
-                    seq_num = 0
-                
-                # If system sequence number hasn't changed, user has NOT performed a new copy
-                if seq_num > 0 and seq_num == self._last_clip_seq_num:
-                    time.sleep(0.5)
-                    continue
-                
-                current_clipboard = pyperclip.paste()
-                if not current_clipboard or not current_clipboard.strip():
-                    time.sleep(0.5)
-                    continue
-                
-                # Skip if clipboard matches the single segment we JUST copied in Paste Mode
-                if (current_clipboard == self._last_clipboard_content and 
-                    current_clipboard != self.clipboard_manager.current_content):
-                    time.sleep(0.5)
-                    continue
-                
-                # Genuine new copy operation detected!
-                self._last_clip_seq_num = seq_num
-                self._last_clipboard_content = current_clipboard
-                self.clipboard_manager.load_text(current_clipboard)
-                count = self.clipboard_manager.total_segments
-                if count > 0:
-                    print(f"[DEBUG] New copy detected (seq #{seq_num})! Loaded {count} segments.")
-                    notification.notify_sequence_loaded(count)
-                    self._update_position()
+                self._sync_clipboard()
             except Exception:
-                pass
-            
+                logging.exception("Clipboard monitor error")
+
             # Poll every 500ms
             time.sleep(0.5)
-    
+
+    def _worker_loop(self):
+        """Runs hotkey actions one at a time, outside the keyboard hook"""
+        while True:
+            action = self._actions.get()
+            if action is None:
+                return
+            try:
+                # Pick up a copy the monitor hasn't polled yet, so a quick
+                # Ctrl+C then Ctrl+Shift+V pastes the NEW text, not the old one
+                self._sync_clipboard()
+                action()
+            except Exception:
+                logging.exception("Hotkey action failed")
+
+    def _enqueue(self, action: Callable) -> Callable:
+        """
+        Wrap an action for keyboard.add_hotkey.
+        With suppress=True the keyboard library calls the callback inside the
+        Windows low-level keyboard hook; slow work there (typing a long
+        segment) makes Windows drop the hook and every hotkey stops working.
+        The callback must also return a falsy value so the keys stay suppressed.
+        """
+        def callback():
+            self._actions.put(action)
+        return callback
+
+    def _release_modifiers(self):
+        for key in _MODIFIERS:
+            try:
+                keyboard.release(key)
+            except Exception:
+                pass
+        time.sleep(0.05)
+
     def _on_sequential_paste(self):
         """Handle Ctrl+Shift+V - Paste next segment"""
-        # Check if we have content - if not, try loading from clipboard directly
+        # Nothing loaded yet (e.g. text was copied before the app started):
+        # load whatever is on the clipboard now
         if not self.clipboard_manager.has_content:
-            try:
+            with self._clipboard_lock:
                 current = pyperclip.paste()
                 if current and current.strip():
                     self.clipboard_manager.load_text(current)
                     self._last_clipboard_content = current
-                    try:
-                        self._last_clip_seq_num = ctypes.windll.user32.GetClipboardSequenceNumber()
-                    except Exception:
-                        pass
-                    count = self.clipboard_manager.total_segments
-                    if count > 0:
-                        print(f"[DEBUG] Fallback load: {count} segments")
-                        notification.notify_sequence_loaded(count)
-                        self._update_position()
-            except Exception:
-                pass
-        
+                    self._last_clip_seq_num = _clipboard_seq_num()
+            count = self.clipboard_manager.total_segments
+            if count > 0:
+                notification.notify_sequence_loaded(count)
+                self._update_position()
+
         if not self.clipboard_manager.has_content:
             notification.notify_no_content()
             return
-        
+
         # Check if sequence is exhausted - if so, stop cleanly (DO NOT auto-loop old text!)
-        if self.clipboard_manager.is_exhausted():
+        segment = self.clipboard_manager.get_next_segment()
+        if segment is None:
             notification.notify_sequence_complete(self.clipboard_manager.total_segments)
             return
-        
-        # Get next segment
-        segment = self.clipboard_manager.get_next_segment()
-        if segment:
-            # Set pasting flag to prevent monitor from interfering
-            self._is_pasting = True
-            
-            try:
-                # Check paste mode from settings
-                settings = get_settings()
-                paste_mode = settings.get('paste_mode', 'paste')
-                
-                if paste_mode == 'type':
-                    # Release Ctrl and Shift modifiers so typed characters aren't treated as Ctrl+Shift shortcuts
-                    keyboard.release('ctrl')
-                    keyboard.release('shift')
-                    keyboard.release('left ctrl')
-                    keyboard.release('right ctrl')
-                    keyboard.release('left shift')
-                    keyboard.release('right shift')
-                    time.sleep(0.05)
-                    
-                    # Type mode: simulate keystrokes (works on paste-blocked fields)
-                    keyboard.write(segment, delay=0.01)
-                else:
-                    # Paste mode: use clipboard (faster)
-                    pyperclip.copy(segment)
-                    keyboard.send('ctrl+v')
-                    # Track segment & update sequence number to prevent monitor re-triggering
-                    self._last_clipboard_content = segment
-                    try:
-                        self._last_clip_seq_num = ctypes.windll.user32.GetClipboardSequenceNumber()
-                    except Exception:
-                        pass
-                
-                # Small delay to let action complete
-                time.sleep(0.1)
-            finally:
-                self._is_pasting = False
-            
-            # Show position notification (respects toast_enabled setting)
-            current, total = self.clipboard_manager.get_position()
-            notification.notify_paste_position(current, total)
-            
-            self._update_position()
-    
+
+        # Check paste mode from settings
+        settings = get_settings()
+        paste_mode = settings.get('paste_mode', 'paste')
+
+        self._release_modifiers()
+
+        if paste_mode == 'type':
+            # Type mode: simulate keystrokes (works on paste-blocked fields)
+            keyboard.write(segment, delay=0.01)
+        else:
+            # Paste mode: use clipboard (faster)
+            with self._clipboard_lock:
+                pyperclip.copy(segment)
+                # Track segment & update sequence number to prevent monitor re-triggering
+                self._last_clipboard_content = segment
+                self._last_clip_seq_num = _clipboard_seq_num()
+            keyboard.send('ctrl+v')
+
+        # Small delay to let action complete
+        time.sleep(0.1)
+
+        # Show position notification (respects toast_enabled setting)
+        current, total = self.clipboard_manager.get_position()
+        notification.notify_paste_position(current, total)
+
+        self._update_position()
+
     def _on_reset(self):
         """Handle Ctrl+Shift+R - Reset sequence"""
         self.clipboard_manager.reset()
         notification.notify_sequence_reset()
         self._update_position()
-    
+
     def _on_skip(self):
         """Handle Ctrl+Shift+N - Skip current segment"""
         if not self.clipboard_manager.has_content:
             notification.notify_no_content()
             return
-        
+
         if self.clipboard_manager.skip_segment():
             current, total = self.clipboard_manager.get_position()
-            if self.clipboard_manager.is_exhausted():
+            if current >= total:
                 notification.show_toast(
                     notification.APP_NAME,
-                    f"Skipped to end. Sequence complete.",
+                    "Skipped to end. Sequence complete.",
                     timeout=2
                 )
             else:
@@ -190,13 +221,13 @@ class HotkeyHandler:
             self._update_position()
         else:
             notification.notify_sequence_complete(self.clipboard_manager.total_segments)
-    
+
     def _on_go_back(self):
         """Handle Ctrl+Shift+B - Go back to previous segment"""
         if not self.clipboard_manager.has_content:
             notification.notify_no_content()
             return
-        
+
         if self.clipboard_manager.go_back():
             current, total = self.clipboard_manager.get_position()
             notification.show_toast(
@@ -211,56 +242,61 @@ class HotkeyHandler:
                 "Already at start",
                 timeout=1
             )
-    
+
     def start(self):
         """Start listening for hotkeys and clipboard changes"""
         if self.running:
             return
-        
+
         self.running = True
-        
-        # Initialize clipboard content tracking
+
+        # Text already on the clipboard at startup is not auto-loaded; the
+        # first Ctrl+Shift+V picks it up via _sync_clipboard instead
         try:
             self._last_clipboard_content = pyperclip.paste() or ""
         except Exception:
             self._last_clipboard_content = ""
-        
+
+        self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self._worker_thread.start()
+
         # Start clipboard monitor thread (detects ALL copy methods)
         self._clipboard_monitor_thread = threading.Thread(
             target=self._clipboard_monitor_loop,
             daemon=True
         )
         self._clipboard_monitor_thread.start()
-        
+
         # Register hotkeys
         keyboard.add_hotkey(
-            HOTKEYS['sequential_paste'], 
-            self._on_sequential_paste,
+            HOTKEYS['sequential_paste'],
+            self._enqueue(self._on_sequential_paste),
             suppress=True
         )
-        
+
         keyboard.add_hotkey(
-            HOTKEYS['reset_sequence'], 
-            self._on_reset,
+            HOTKEYS['reset_sequence'],
+            self._enqueue(self._on_reset),
             suppress=True
         )
-        
+
         keyboard.add_hotkey(
-            HOTKEYS['skip_segment'], 
-            self._on_skip,
+            HOTKEYS['skip_segment'],
+            self._enqueue(self._on_skip),
             suppress=True
         )
-        
+
         keyboard.add_hotkey(
-            HOTKEYS['go_back'], 
-            self._on_go_back,
+            HOTKEYS['go_back'],
+            self._enqueue(self._on_go_back),
             suppress=True
         )
-    
+
     def stop(self):
         """Stop listening for hotkeys and clipboard monitor"""
         self.running = False
         keyboard.unhook_all_hotkeys()
+        self._actions.put(None)
 
 
 # Global instance for easy access

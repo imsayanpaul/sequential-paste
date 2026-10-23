@@ -68,17 +68,46 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+// Close a running instance so its exe can be replaced / removed
+procedure CloseRunningApp();
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#MyAppExeName}', '',
+       SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  CloseRunningApp();
+  Result := '';
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  CloseRunningApp();
+  Result := True;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  // "Start with Windows" can also be enabled from the tray menu, which the
+  // [Registry] entry above doesn't track - remove it either way
+  if CurUninstallStep = usPostUninstall then
+    RegDeleteValue(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Run', '{#MyAppName}');
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
-    MsgBox('Sequential Paste is now running in your system tray!' + #13#10 + #13#10 +
+    SuppressibleMsgBox('Sequential Paste has been installed. It runs in your system tray.' + #13#10 + #13#10 +
            'Look for the clipboard icon near the clock (bottom-right of your screen).' + #13#10 + #13#10 +
            'Shortcuts:' + #13#10 +
            '  Ctrl+Shift+V - Paste next segment' + #13#10 +
            '  Ctrl+Shift+N - Skip segment' + #13#10 +
            '  Ctrl+Shift+B - Go back' + #13#10 +
            '  Ctrl+Shift+R - Reset sequence',
-           mbInformation, MB_OK);
+           mbInformation, MB_OK, IDOK);
   end;
 end;

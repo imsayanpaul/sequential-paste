@@ -2,9 +2,21 @@
 Clipboard Manager - Core logic for sequential paste functionality
 """
 import re
+import threading
+import functools
 import pyperclip
 from typing import Optional, List
 from config import DELIMITER_PATTERNS, DelimiterType, DEFAULT_DELIMITER, ABBREVIATIONS
+
+
+def _locked(method):
+    """Run the method while holding the manager's lock"""
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self.lock:
+            return method(self, *args, **kwargs)
+    return wrapper
+
 
 class ClipboardManager:
     """Manages clipboard content and sequential paste state"""
@@ -15,7 +27,10 @@ class ClipboardManager:
         self.current_index: int = 0
         self.delimiter: DelimiterType = DEFAULT_DELIMITER
         self._last_clipboard: str = ""
+        # State is shared by the hotkey worker, clipboard monitor and tray threads
+        self.lock = threading.RLock()
     
+    @_locked
     def set_delimiter(self, delimiter: DelimiterType) -> None:
         """Change the delimiter type and re-parse content"""
         self.delimiter = delimiter
@@ -23,6 +38,7 @@ class ClipboardManager:
             self._parse_content()
             self.current_index = 0
     
+    @_locked
     def update_from_clipboard(self) -> bool:
         """
         Check clipboard for new content and update if changed.
@@ -40,6 +56,7 @@ class ClipboardManager:
         except Exception:
             return False
     
+    @_locked
     def load_text(self, text: str) -> None:
         """
         Load text directly and always reset sequence.
@@ -82,8 +99,10 @@ class ClipboardManager:
         protected_text = protected_text.replace('…', ELLIPSIS_PH)
         
         # 2. Protect URLs (www.example.com, http://example.com)
+        # The URL must not end in punctuation, so "Visit www.example.com. Next"
+        # still splits after the URL.
         protected_text = re.sub(
-            r'(https?://[^\s]+|www\.[^\s]+)',
+            r'(https?://[^\s]*[^\s.,;:!?)\'"]|www\.[^\s]*[^\s.,;:!?)\'"])',
             lambda m: m.group().replace('.', URL_PH),
             protected_text
         )
@@ -102,9 +121,10 @@ class ClipboardManager:
             protected_text
         )
         
-        # 5. Protect numbered lists (1. 2. 3. at start of line or after space)
+        # 5. Protect numbered lists (1. 2. 3. at start of a line only, so a
+        # sentence ending in a number like "I bought 5." still splits)
         protected_text = re.sub(
-            r'(^|\s)(\d{1,3})\.',
+            r'(^|\n)([ \t]*\d{1,3})\.',
             rf'\1\2{NUMLIST_PH}',
             protected_text
         )
@@ -118,20 +138,28 @@ class ClipboardManager:
         )
         
         # 7. Protect abbreviations
+        # Case-sensitive on purpose: with IGNORECASE, "The answer is no." was
+        # treated as the abbreviation "No." and never split.
         for abbr in ABBREVIATIONS:
-            pattern = rf'\b({abbr})\.'
-            protected_text = re.sub(pattern, rf'\1{ABBR_PH}', protected_text, flags=re.IGNORECASE)
-        
+            pattern = rf'\b({re.escape(abbr)})\.'
+            protected_text = re.sub(pattern, rf'\1{ABBR_PH}', protected_text)
+
         # Now split on sentence-ending punctuation
-        # Supports: . ! ? । (Hindi) 。(Chinese/Japanese) ؟ (Arabic)
+        # Supports: . ! ? । (Hindi) 。！？ (Chinese/Japanese) ؟ (Arabic)
         # Use a more Unicode-friendly approach: insert delimiter then split
         SPLIT_MARKER = "\x00SPLIT\x00"
-        
+
         # Insert split marker after sentence-ending punctuation followed by:
         # - whitespace, OR
         # - uppercase letter (handles missing space typos like "working.I am")
         protected_text = re.sub(
-            r'([.!?।。؟])(\s+|(?=[A-Z]))',
+            r'([.!?।؟])(\s+|(?=[A-Z]))',
+            rf'\1{SPLIT_MARKER}',
+            protected_text
+        )
+        # CJK full-width punctuation is normally not followed by a space
+        protected_text = re.sub(
+            r'([。！？])\s*',
             rf'\1{SPLIT_MARKER}',
             protected_text
         )
@@ -173,6 +201,7 @@ class ClipboardManager:
             else:
                 self.segments = [self.current_content]
     
+    @_locked
     def get_next_segment(self) -> Optional[str]:
         """
         Get the next segment in sequence.
@@ -185,16 +214,19 @@ class ClipboardManager:
         self.current_index += 1
         return segment
     
+    @_locked
     def peek_next_segment(self) -> Optional[str]:
         """Preview the next segment without advancing the index"""
         if self.is_exhausted():
             return None
         return self.segments[self.current_index]
     
+    @_locked
     def reset(self) -> None:
         """Reset sequence index to start"""
         self.current_index = 0
     
+    @_locked
     def skip_segment(self) -> bool:
         """
         Skip the current segment without pasting.
@@ -205,6 +237,7 @@ class ClipboardManager:
         self.current_index += 1
         return True
     
+    @_locked
     def go_back(self) -> bool:
         """
         Go back to the previous segment.
@@ -215,14 +248,17 @@ class ClipboardManager:
         self.current_index -= 1
         return True
     
+    @_locked
     def is_exhausted(self) -> bool:
         """Check if all segments have been pasted"""
         return self.current_index >= len(self.segments)
     
+    @_locked
     def get_position(self) -> tuple:
         """Get current position as (current, total)"""
         return (self.current_index, len(self.segments))
     
+    @_locked
     def get_remaining_count(self) -> int:
         """Get number of segments remaining"""
         return max(0, len(self.segments) - self.current_index)

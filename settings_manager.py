@@ -2,6 +2,7 @@
 Settings Manager - Persistent settings storage
 """
 import json
+import logging
 import os
 import sys
 import winreg
@@ -41,18 +42,23 @@ class SettingsManager:
             if os.path.exists(path):
                 with open(path, 'r', encoding='utf-8') as f:
                     saved = json.load(f)
+                if isinstance(saved, dict):
                     self.settings.update(saved)
         except Exception:
-            pass
+            logging.exception("Failed to load settings, using defaults")
     
     def save(self) -> None:
         """Save settings to file"""
         try:
             path = get_settings_path()
-            with open(path, 'w', encoding='utf-8') as f:
+            # Write to a temp file and swap it in, so a crash mid-write
+            # can't leave a truncated settings.json behind
+            tmp_path = path + '.tmp'
+            with open(tmp_path, 'w', encoding='utf-8') as f:
                 json.dump(self.settings, f, indent=2)
+            os.replace(tmp_path, path)
         except Exception:
-            pass
+            logging.exception("Failed to save settings")
     
     def get(self, key: str, default: Any = None) -> Any:
         """Get a setting value"""
@@ -77,13 +83,18 @@ class SettingsManager:
 
 
 def get_exe_path() -> str:
-    """Get the path to the current executable"""
+    """Get the quoted startup command for the current executable"""
     if getattr(sys, 'frozen', False):
-        # Running as compiled exe
-        return sys.executable
+        # Running as compiled exe. Quoted, because the default install dir
+        # ("C:\Program Files\Sequential Paste") contains spaces.
+        return f'"{sys.executable}"'
     else:
-        # Running as script
-        return sys.executable + ' "' + os.path.abspath(sys.argv[0]) + '"'
+        # Running as script - prefer pythonw.exe so no console window opens
+        python = sys.executable
+        pythonw = os.path.join(os.path.dirname(python), 'pythonw.exe')
+        if os.path.exists(pythonw):
+            python = pythonw
+        return f'"{python}" "{os.path.abspath(sys.argv[0])}"'
 
 
 def set_startup_with_windows(enable: bool) -> bool:

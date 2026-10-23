@@ -3,11 +3,8 @@ Sequential Paste Clipboard Utility
 Main entry point for the application
 """
 import sys
-import os
+import ctypes
 import threading
-import time
-import tempfile
-import msvcrt
 
 # Import error logger first to capture any startup errors
 import error_logger
@@ -20,23 +17,25 @@ from settings_manager import get_settings
 import notification
 
 
-# Single instance lock file
-_lock_file = None
+# Single instance mutex handle (kept open for the lifetime of the process)
+_instance_mutex = None
+ERROR_ALREADY_EXISTS = 183
 
 
 def is_already_running() -> bool:
-    """Check if another instance is already running using a lock file"""
-    global _lock_file
-    
-    lock_path = os.path.join(tempfile.gettempdir(), 'sequential_paste.lock')
-    
-    try:
-        # Try to open and lock the file
-        _lock_file = open(lock_path, 'w')
-        msvcrt.locking(_lock_file.fileno(), msvcrt.LK_NBLCK, 1)
-        return False  # Lock acquired, we're the only instance
-    except (IOError, OSError):
-        return True  # Lock failed, another instance is running
+    """Check if another instance is already running using a named mutex"""
+    global _instance_mutex
+
+    kernel32 = ctypes.windll.kernel32
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    _instance_mutex = kernel32.CreateMutexW(None, False, "Local\\SequentialPaste_SingleInstance")
+    return kernel32.GetLastError() == ERROR_ALREADY_EXISTS
+
+
+def show_message(text: str) -> None:
+    """Show a message box (the windowed exe has no console for print)"""
+    MB_ICONINFORMATION = 0x40
+    ctypes.windll.user32.MessageBoxW(None, text, APP_NAME, MB_ICONINFORMATION)
 
 
 def main():
@@ -45,11 +44,7 @@ def main():
     # Check for existing instance
     if is_already_running():
         print("Sequential Paste is already running!")
-        notification.show_toast(
-            APP_NAME,
-            "Already running in system tray",
-            timeout=2
-        )
+        show_message(f"{APP_NAME} is already running in the system tray.")
         sys.exit(0)
     
     print(f"Starting {APP_NAME} v{APP_VERSION}...")

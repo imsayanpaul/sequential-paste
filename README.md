@@ -117,7 +117,8 @@ python build.py
 ├── build.py             # PyInstaller build script
 ├── installer.iss        # Inno Setup installer script
 └── assets/
-    └── icon.png         # App icon
+    ├── icon.ico         # App icon
+    └── image.png        # README screenshot
 ```
 
 ## 🔧 Requirements
@@ -132,7 +133,6 @@ pyperclip
 pystray
 Pillow
 plyer
-psutil
 pyinstaller  # for building
 ```
 

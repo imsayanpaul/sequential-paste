@@ -4,7 +4,8 @@ Error Logger - Logs errors to a file for debugging
 import os
 import sys
 import logging
-from datetime import datetime
+import logging.handlers
+import threading
 from config import APP_NAME
 
 def get_log_path() -> str:
@@ -25,22 +26,26 @@ def setup_logging():
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     
-    # File handler (for errors)
-    file_handler = logging.FileHandler(log_path, encoding='utf-8')
+    # File handler (for errors). Rotated so it can't grow forever, and
+    # delayed so the file is only created once something is logged.
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_path, maxBytes=1_000_000, backupCount=1, encoding='utf-8', delay=True
+    )
     file_handler.setLevel(logging.WARNING)
     file_handler.setFormatter(formatter)
-    
-    # Console handler (for info)
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(formatter)
-    
+
     # Setup root logger
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
     logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    
+
+    # Console handler (for info). The windowed exe has no console (stderr is None).
+    if sys.stderr is not None:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+
     return logger
 
 
@@ -57,9 +62,15 @@ def log_exception(exc_type, exc_value, exc_traceback):
     )
 
 
+def log_thread_exception(args):
+    """Log unhandled exceptions from background threads (not covered by sys.excepthook)"""
+    log_exception(args.exc_type, args.exc_value, args.exc_traceback)
+
+
 def install_exception_handler():
     """Install the custom exception handler"""
     sys.excepthook = log_exception
+    threading.excepthook = log_thread_exception
 
 
 # Initialize on import
